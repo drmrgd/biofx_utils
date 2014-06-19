@@ -12,3 +12,7 @@ Miscellaneous Bioinformatics Scripts
   
   or can use a file with positions in the same format and get a batch output.  Script only beta version and needs 
   some more tweaks when I have time.
+
+* <b>vcfExtractor.pl</b>
+  Script to parse Ion Torrent specific VCF files and pull out variant data.  This works with TS v3.2 and v4.0.2
+  files.  Some parts are compatible with Ion Reporter generated VCF files.
