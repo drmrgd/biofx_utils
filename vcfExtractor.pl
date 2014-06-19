@@ -44,7 +44,7 @@ EOT
 my $usage = <<"EOT";
 USAGE: $scriptname [options] <input_vcf_file>
     -o, --output    Send output to custom file.  Default is STDOUT.
-    -p, --pos       Position to extract from the VCF file.  Default is to print the whole file.
+    -p, --pos       Output only variants at this position.  Format is "chr<x>:######" 
     -l, --lookup    Read a list of variants from a file to query the VCF. 
     -f, --fuzzy     Used with '-p'. Less precise (fuzzy) position match, using 1 for trim last digit 
                     from the position query, 2 for trim last two digits the the position query, 
