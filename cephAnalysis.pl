@@ -15,7 +15,7 @@ use File::Basename;
 use Data::Dump;
 
 my $scriptname = basename($0);
-my $version = "v4.1.0_032714";
+my $version = "v4.2.0_062014";
 my $description = <<EOT;
 Program to read in all of the variant call table files from an Ion Torrent run on CEPH, and report out
 the ID and number of times each variant is seen.  This is used to track the number of variants reported 
@@ -105,16 +105,26 @@ my %fields = (
 );
 
 my $ts_version;
-($classic) ? ( $ts_version = "v3.2.1" ) : ( $ts_version = "v4.0.2" );
+#($classic) ? ( $ts_version = "v3.2.1" ) : ( ($vcf_input) ? ( $ts_version = "VCF" ) : ($ts_version = "v4.0.2" ) );
+if ($classic) {
+    $ts_version = "v3.2.1";
+}
+elsif ($vcf_input) {
+    $ts_version = "VCF";
+}
+else {
+    $ts_version = "v4.0.2";
+}
 
 if ( $vcf_input ) {
-    print "Processing data as VCF file...\n";
-    exit;
+    #print "Processing data as VCF file...\n";
+    proc_vcf( \@filesList, \$ts_version );
 } else {
     proc_datatable( \@filesList, \%fields, \$ts_version );
 }
 
 # Get some field width data
+# XXX
 my ( $rwidth, $awidth ) = field_width( \%all_variants );
 
 # Get statistics about each variant and generate a formated hash table to print out the results with 
@@ -166,13 +176,14 @@ sub proc_datatable {
 
     for my $file ( @$files ) {
         open( my $in_fh, "<", $file );
+        my $header = <$in_fh>;
+        if ( $header =~ /^#+.*VCF/ ) {
+            print "ERROR: file '$file' appears to be a VCF file.  You should use the -V option to process.\n";
+            exit 1;
+        }
         while (<$in_fh>) {
             next if ( /Chrom/ || /Absent/ || /No Call/ );
             my @fields = split;
-            
-            #dd \@fields;
-            #exit;
-
             if ( $fields[$field_index[6]] > $covfilter ) {
                 my $varid = join( ':', @fields[@varid_index] );
                 push( @{$all_variants{$varid}}, [@fields[@field_index]] );
@@ -185,6 +196,41 @@ sub proc_datatable {
         #exit;
     }
     return;
+}
+
+sub proc_vcf {
+    # Process VCF file input.  vcfExtractor program required
+    my $files = shift;
+    my $version = shift;
+
+    print "Processing '$$version' data...\n";
+
+    # Check to see that we have vcfExtractor in our $PATH
+    if ( ! `which vcfExtractor` ) {
+        print "ERROR: 'vcfExtractor' required when inputting VCF files, but program not found.  Check to see that this is in your path\n";
+        exit 1;
+    }
+
+    for my $file ( @$files ) {
+         my $cmd = "vcfExtractor -n $file";
+         open( my $data_fh, "-|", $cmd ) || die "Can't open the stream: $!";
+
+         while (<$data_fh>) {
+             next if ( /CHROM/ || /NOCALL/ || /NODATA/ );
+             #next unless ( /PASS/ ); 
+             my @fields = split;
+             if ( $fields[6] > $covfilter ) {
+                 my $varid = join( ':', @fields[0,1,2] );
+                 push( @{$all_variants{$varid}}, [$fields[0],'---',@fields[1,2,5,6]] );
+                 push( @{$var_freq{$varid}}, $fields[5] );
+                 push( @{$var_cov{$varid}}, $fields[6] );
+             }
+         }
+         close $data_fh;
+         #dd \%all_variants;
+         #exit;
+     }
+     return;
 }
 
 sub stats {
@@ -205,8 +251,11 @@ sub field_width {
     my $awidth = 0;
 
     for my $var ( keys %$hash_ref ) {
-        my ($ref, $alt) = $var =~ /.*?(\w+):(\w+)$/;
+        #my ($ref, $alt) = $var =~ /.*?(\w+):(\w+)$/;
+        my ($chr, $start, $ref, $alt) = split( /:/, $var );
+        #print "var: $var\n";
         #print "ref: $ref\nalt: $alt\n";
+        #next;
         
         $rwidth = length( $ref ) + 3  if ( length( $ref ) > $rwidth ); 
         $awidth = length( $alt ) + 3  if ( length( $alt ) > $awidth );
