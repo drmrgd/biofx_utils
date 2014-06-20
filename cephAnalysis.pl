@@ -6,19 +6,16 @@
 # Created: 2/27/2013 - Dave Sims
 #
 ##########################################################################################################
-
 use warnings;
 use strict;
-use autodie;
 
 use List::Util qw{ min max sum };
 use Getopt::Long qw{ :config no_ignore_case };
 use File::Basename;
 use Data::Dump;
 
-#( my $scriptname = $0 ) =~ s/^(.*\/)+//;
 my $scriptname = basename($0);
-my $version = "v4.0.032714";
+my $version = "v4.1.0_032714";
 my $description = <<EOT;
 Program to read in all of the variant call table files from an Ion Torrent run on CEPH, and report out
 the ID and number of times each variant is seen.  This is used to track the number of variants reported 
@@ -29,9 +26,10 @@ EOT
 my $usage = <<EOT;
 USAGE: $scriptname [options] <input_files>
     -C, --Classic    Use TVCv3.2.1 formatted data files.  Will be deprecated.
+    -V, --VCF        Input is a VCF file instead of TVC Tabular File
     -c, --coverage   Coverage cutoff (default is 450)
     -p, --preview    Write output only to STDOUT to preview the results.
-    -o, --output     Write output to file (default is STDOUT)
+    -o, --output     Write output to custom file (DEFAULT: "CEPH_###_Run_Variant_Tally.tsv")
     -v, --version    Print version information
     -h, --help       Print help information
 EOT
@@ -42,9 +40,11 @@ my $covfilter = 450;
 my $preview;
 my $output;
 my $classic;
+my $vcf_input;
 
 # Set up some commandline opts
 GetOptions( "Classic"       => \$classic,
+            "VCF"           => \$vcf_input,
             "coverage=i"    => \$covfilter,
             "preview"       => \$preview,
             "output=s"      => \$output,
@@ -76,8 +76,8 @@ if ( ! @ARGV ) {
 }
 
 # Set up Tally output file.
-my $outfile = "CEPH_".$totRuns."_Run_Variant_Tally.tsv";
-my $out_fh;
+my ($out_fh, $outfile);
+($output) ? ($outfile = $output) : ($outfile = "CEPH_".$totRuns."_Run_Variant_Tally.tsv");
 if ( $preview ) {
     $out_fh = \*STDOUT;
 } else {
@@ -96,46 +96,25 @@ my %fields = (
                  },
     "v4.0.2"  => { "varid" => [qw(12 0 1 15 16)],
                    "data"  => [qw(0 1 12 13 15 16 6 18)],
-                 }
+                 },
+    # Add in VCF entry; use data retrieved from vcfExtractor
+    "vcf"    => { "varid"  => [qw()],
+                  "data"   => [qw()],
+              },
 );
 
-proc_datatable( \@filesList, \%fields );
+my $ts_version;
+($classic) ? ( $ts_version = "v3.2.1" ) : ( $ts_version = "v4.0.2" );
 
-sub proc_datatable {
-    my $files = shift;
-    my $data_fields = shift;
-
-    # Get fields to use for spliting the tables
-    my $version = $classic ? 'v3.2.1' : 'v4.0.2';
-    print "Processing '$version' data...\n";
-    my @varid_index = @{$$data_fields{$version}{'varid'}};
-    my @field_index = @{$$data_fields{$version}{'data'}};
-
-    for my $file ( @$files ) {
-        open( my $in_fh, "<", $file );
-        while (<$in_fh>) {
-            next if ( /Chrom/ || /Absent/ || /No Call/ );
-            my @fields = split;
-            if ( $fields[$field_index[7]] > $covfilter ) {
-                my $varid = join( ':', @fields[@varid_index] );
-                push( @{$all_variants{$varid}}, [@fields[@field_index]] );
-                #push( @{$all_variants{$varid}->{@fields[@field_index[0..5]]}}, [@fields[@field_index[6,7]]] );
-                #push( @{$all_variants{$varid}}, [$fields[$field_index[6]], $fields[$field_index[7]]] ); 
-                push( @{$var_freq{$varid}}, $fields[$field_index[6]] );
-                push( @{$var_cov{$varid}}, $fields[$field_index[7]] );
-            }
-        }
-        close $in_fh;
-    }
-    return;
+if ( $vcf_input ) {
+    print "Processing data as VCF file...\n";
+    exit;
+} else {
+    proc_datatable( \@filesList, \%fields, \$ts_version );
 }
 
 # Get some field width data
 my ( $rwidth, $awidth ) = field_width( \%all_variants );
-#print "rwidth: $rwidth\nawidth: $awidth\n";
-
-#dd \%all_variants;
-#exit;
 
 # Get statistics about each variant and generate a formated hash table to print out the results with 
 my %results;
@@ -164,6 +143,36 @@ print $out_fh "$header\n";
 
 for my $variant ( sort { $results{$b}[1] <=> $results{$a}[1] } keys %results ) {
     print $out_fh $results{$variant}[0], "\n";
+}
+
+sub proc_datatable {
+    my $files = shift;
+    my $data_fields = shift;
+    my $version = shift;
+
+    # Get fields to use for spliting the tables
+    #my $version = $classic ? 'v3.2.1' : 'v4.0.2';
+    print "Processing '$$version' data...\n";
+    my @varid_index = @{$$data_fields{$$version}{'varid'}};
+    my @field_index = @{$$data_fields{$$version}{'data'}};
+
+    for my $file ( @$files ) {
+        open( my $in_fh, "<", $file );
+        while (<$in_fh>) {
+            next if ( /Chrom/ || /Absent/ || /No Call/ );
+            my @fields = split;
+            if ( $fields[$field_index[7]] > $covfilter ) {
+                my $varid = join( ':', @fields[@varid_index] );
+                push( @{$all_variants{$varid}}, [@fields[@field_index]] );
+                push( @{$var_freq{$varid}}, $fields[$field_index[6]] );
+                push( @{$var_cov{$varid}}, $fields[$field_index[7]] );
+            }
+        }
+        close $in_fh;
+        #dd \%all_variants;
+        #exit;
+    }
+    return;
 }
 
 sub stats {
