@@ -90,12 +90,13 @@ my ( %all_variants, %var_freq, %var_cov );
 
 # Set up fields to use to capture data from the tables.  Set up here so that we can mod it easy later when the 
 # tables change.
+# NOTE: removed gene id
 my %fields = (
-    "v3.2.1"  => { "varid" => [qw(2 0 1 6 7)],
-                   "data"  => [qw(0 1 2 3 6 7 8 10)],
+    "v3.2.1"  => { "varid" => [qw(0 1 6 7)],
+                   "data"  => [qw(0 1 3 6 7 8 10)],
                  },
-    "v4.0.2"  => { "varid" => [qw(12 0 1 15 16)],
-                   "data"  => [qw(0 1 12 13 15 16 6 18)],
+    "v4.0.2"  => { "varid" => [qw(0 1 15 16)],
+                   "data"  => [qw(0 1 13 15 16 6 18)],
                  },
     # Add in VCF entry; use data retrieved from vcfExtractor
     "vcf"    => { "varid"  => [qw()],
@@ -120,22 +121,30 @@ my ( $rwidth, $awidth ) = field_width( \%all_variants );
 my %results;
 foreach my $variant ( keys %all_variants) {
 	my $count = @{$all_variants{$variant}};
-    my ( $gene, $chr, $pos, $ref, $alt ) = split( /:/, $variant );
+    # NOTE: removed gene ID
+    #my ( $gene, $chr, $pos, $ref, $alt ) = split( /:/, $variant );
+    my ( $chr, $pos, $ref, $alt ) = split( /:/, $variant );
 	
 	# Get min, max, median coverage and frequency info	
 	my ( $minCov, $maxCov, $meanCov ) = stats( \@{$var_cov{$variant}} );
 	my ( $minFreq, $maxFreq, $meanFreq ) = stats( \@{$var_freq{$variant}} );
     my $detection_freq = sprintf( "%0.2f", ($count/$totRuns)*100);
 
-    my $format = "%-8s %-8s %-12d %-${rwidth}s %-${awidth}s %-10s %-7d %-7d %-7d %8.2f%% %8.2f%% %8.2f%%";
-    my $varLine = sprintf( $format, $gene, $chr, $pos, $ref, $alt, "$count/$totRuns", $minCov, $meanCov, $maxCov, $minFreq, $meanFreq, $maxFreq );
+    # NOTE: removed gene ID
+    #my $format = "%-8s %-8s %-12d %-${rwidth}s %-${awidth}s %-10s %-7d %-7d %-7d %8.2f%% %8.2f%% %8.2f%%";
+    #my $varLine = sprintf( $format, $gene, $chr, $pos, $ref, $alt, "$count/$totRuns", $minCov, $meanCov, $maxCov, $minFreq, $meanFreq, $maxFreq );
+
+    my $format = "%-8s %-12d %-${rwidth}s %-${awidth}s %-10s %-7d %-7d %-7d %8.2f%% %8.2f%% %8.2f%%";
+    my $varLine = sprintf( $format, $chr, $pos, $ref, $alt, "$count/$totRuns", $minCov, $meanCov, $maxCov, $minFreq, $meanFreq, $maxFreq );
 
     $results{$variant} = [$varLine, $detection_freq];
 }
 
 # Print out the collected summary data 
-my @header_cols = qw{ Gene Chr Position Ref Var Count MinCov MedCov MaxCov MinVAF MedVAF MaxVAF };
-my $header = sprintf( "%-8s %-8s %-12s %-${rwidth}s %-${awidth}s %-10s %-7s %-7s %-7s %9s %9s %9s", @header_cols ); 
+#my @header_cols = qw{ Gene Chr Position Ref Var Count MinCov MedCov MaxCov MinVAF MedVAF MaxVAF };
+# NOTE: removed gene ID
+my @header_cols = qw{ Chr Position Ref Var Count MinCov MedCov MaxCov MinVAF MedVAF MaxVAF };
+my $header = sprintf( "%-8s %-12s %-${rwidth}s %-${awidth}s %-10s %-7s %-7s %-7s %9s %9s %9s", @header_cols ); 
 my $title = "Frequency of detected variants with at least $covfilter reads in $totRuns CEPH runs";
 
 print $out_fh "$title\n\n";
@@ -151,7 +160,6 @@ sub proc_datatable {
     my $version = shift;
 
     # Get fields to use for spliting the tables
-    #my $version = $classic ? 'v3.2.1' : 'v4.0.2';
     print "Processing '$$version' data...\n";
     my @varid_index = @{$$data_fields{$$version}{'varid'}};
     my @field_index = @{$$data_fields{$$version}{'data'}};
@@ -161,11 +169,15 @@ sub proc_datatable {
         while (<$in_fh>) {
             next if ( /Chrom/ || /Absent/ || /No Call/ );
             my @fields = split;
-            if ( $fields[$field_index[7]] > $covfilter ) {
+            
+            #dd \@fields;
+            #exit;
+
+            if ( $fields[$field_index[6]] > $covfilter ) {
                 my $varid = join( ':', @fields[@varid_index] );
                 push( @{$all_variants{$varid}}, [@fields[@field_index]] );
-                push( @{$var_freq{$varid}}, $fields[$field_index[6]] );
-                push( @{$var_cov{$varid}}, $fields[$field_index[7]] );
+                push( @{$var_freq{$varid}}, $fields[$field_index[5]] );
+                push( @{$var_cov{$varid}}, $fields[$field_index[6]] );
             }
         }
         close $in_fh;
