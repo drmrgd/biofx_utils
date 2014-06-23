@@ -13,7 +13,7 @@ use warnings;
 use strict;
 use autodie;
 
-use Getopt::Long;
+use Getopt::Long qw(:config bundling auto_abbrev no_ignore_case );
 use List::Util qw{ sum min max };
 use Data::Dumper;
 use Sort::Versions;
@@ -50,6 +50,7 @@ USAGE: $scriptname [options] <input_vcf_file>
                     from the position query, 2 for trim last two digits the the position query, 
                     and so on.  Can not go higher than 3!
     -n, --noref     Output reference calls.  Ref calls filtered out by default
+    -N, --NOCALL    Remove 'NOCALL' entries from output
     -t, --tvc32     Run the script using the TVCv3.2 VCF files.  Will be deprecated once TVCv4.0 fully
                     implemented
     -v, --version   Version information
@@ -64,15 +65,17 @@ my $lookup;
 my $fuzzy;
 my $noref;
 my $tvc32;
+my $nocall;
 
-GetOptions( "output=s"    => \$outfile,
-            "pos=s"       => \@positions,
-            "tvc32"       => \$tvc32,
-            "lookup=s"    => \$lookup,
-            "fuzzyr=i"    => \$fuzzy,
-            "noref"       => \$noref,
-            "version"     => \$ver_info,
-            "help"        => \$help )
+GetOptions( "output|o=s"    => \$outfile,
+            "NOCALL|N"      => \$nocall,
+            "pos|p=s"       => \@positions,
+            "tvc32|t"       => \$tvc32,
+            "lookup|l=s"    => \$lookup,
+            "fuzzy|f=i"     => \$fuzzy,
+            "noref|n"       => \$noref,
+            "version|v"     => \$ver_info,
+            "help|h"        => \$help )
         or do { print "\n$usage\n"; exit 1; };
 
 sub help {
@@ -120,7 +123,8 @@ batch_lookup(\$lookup, \@positions) if $lookup;
 # If a using lookup positions, double check the format is correct
 my @coords= map {split} @positions;
 if ( @coords ) {
-    ( /\Achr\d+:\d+$/ ) ? next 
+    #( /\Achr\d+:\d+$/ ) ? next 
+    ( /\Achr[0-9YX]:\d+$/i ) ? next 
         :  do { print "Please use the following format for query strings 'chr#:position'\n"; exit 1; } for @coords;
 }
 
@@ -212,14 +216,23 @@ sub parse_data {
         next if /CNV/;
 
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $gtr, $fro, $ro, $fao, $ao, $dp ) = split;
+        next if ( $noref && $gtr eq '0/0' );
+
+        #next unless ( $pos =~ /chr13:2860824/ );
+        #print join( "\n", $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $gtr, $fro, $ro, $fao, $ao, $dp ), "\n";
 
         # Clean up filter reason string
         $reason =~ s/^\.,//;
+        next if $reason eq "NODATA";  # Don't print out NODATA...nothing to learn there.
+        $filter = "NOCALL" if ( $gtr =~ m|\./\.| );
+        next if ( $nocall && $filter eq "NOCALL" );
+        #print "=======================================\n\n";
 
         # Check to see if there is 'F' data or if entry is result of long indel mapper
         if ( $fro eq '.' ) {
             my $var_id = join( ":", $pos, $ref, $alt );
-            my $vaf = vaf_calc( \$reason, \$dp, \$ro, \$ao );
+            #my $vaf = vaf_calc( \$reason, \$dp, \$ro, \$ao );
+            my $vaf = vaf_calc( \$filter, \$dp, \$ro, \$ao );
             push( @{$parsed_data{$var_id}}, $pos, $ref, $alt, $filter, $reason, $gtr, $vaf, $dp, $ro, $ao, $oid );
         }
         else {
@@ -243,8 +256,9 @@ sub parse_data {
                 for my $index ( @array_pos ) {
                     (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$opos_array[$index]/; 
                     my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index] ); 
-                    my $vaf = vaf_calc( \$reason, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
-                    next if ( $noref && $vaf == 0 );
+                    #my $vaf = vaf_calc( \$reason, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
+                    my $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
+                    #next if ( $noref && $vaf == 0 );
                     my $cosid = $oid_array[$index];
                     push( @{$parsed_data{$var_id}}, $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter, $reason, $gtr, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $oid_array[$index] );
                 }
@@ -263,6 +277,8 @@ sub vaf_calc {
     my $acov = shift;
 
     my $vaf;
+
+    #print "\$\$nocall  => $$nocall\n";
 
     if ( $$nocall eq "NOCALL" ) { 
         $vaf = '.';
