@@ -251,10 +251,9 @@ sub parse_data {
                     (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$opos_array[$index]/; 
                     my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index] ); 
                     my $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
-                    #next if ( $noref && $vaf == 0 );
                     if ( $vaf ne '.' ) { next if ( $noref && $vaf == 0 ) }
                     my $cosid = $oid_array[$index];
-                    push( @{$parsed_data{$var_id}}, $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter, $reason, $gtr, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $oid_array[$index] );
+                    push( @{$parsed_data{$var_id}}, $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter, $reason, $gtr, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
             }
         }
