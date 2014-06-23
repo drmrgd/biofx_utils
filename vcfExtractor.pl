@@ -120,11 +120,12 @@ if ( scalar( @ARGV ) < 1 ) {
 # Run parse the lookup file and add variants to the filter if processing batch-wise
 batch_lookup(\$lookup, \@positions) if $lookup;
 
+
 # If a using lookup positions, double check the format is correct
 my @coords= map {split} @positions;
 if ( @coords ) {
     #( /\Achr\d+:\d+$/ ) ? next 
-    ( /\Achr[0-9YX]:\d+$/i ) ? next 
+    ( /\Achr[0-9YX]+:\d+$/i ) ? next 
         :  do { print "Please use the following format for query strings 'chr#:position'\n"; exit 1; } for @coords;
 }
 
