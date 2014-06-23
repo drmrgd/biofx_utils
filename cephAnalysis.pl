@@ -15,7 +15,7 @@ use File::Basename;
 use Data::Dump;
 
 my $scriptname = basename($0);
-my $version = "v4.2.0_062014";
+my $version = "v4.2.1_062014";
 my $description = <<EOT;
 Program to read in all of the variant call table files from an Ion Torrent run on CEPH, and report out
 the ID and number of times each variant is seen.  This is used to track the number of variants reported 
@@ -212,12 +212,11 @@ sub proc_vcf {
     }
 
     for my $file ( @$files ) {
-         my $cmd = "vcfExtractor -n $file";
+         my $cmd = "vcfExtractor --noref --NOCALL  $file";
          open( my $data_fh, "-|", $cmd ) || die "Can't open the stream: $!";
 
          while (<$data_fh>) {
-             next if ( /CHROM/ || /NOCALL/ || /NODATA/ );
-             #next unless ( /PASS/ ); 
+             next if ( /CHROM/ );
              my @fields = split;
              if ( $fields[6] > $covfilter ) {
                  my $varid = join( ':', @fields[0,1,2] );
