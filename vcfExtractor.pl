@@ -52,7 +52,8 @@ USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
     -c, --cosid     Look for variant with matching COSMIC ID (or other Hotspot ID)
     -l, --lookup    Read a list of variants from a file to query the VCF. 
     -f, --fuzzy     Less precise (fuzzy) position match. Strip off n digits from the position string.
-                    MUST be used with the position option, and can not trim more than 3 digits from string.
+                    MUST be used with a query option (e.g. -p, -c, -l), and can not trim more than 3 
+                    digits from string.
     -n, --noref     Output reference calls.  Ref calls filtered out by default
     -N, --NOCALL    Remove 'NOCALL' entries from output
     -t, --tvc32     Run the script using the TVCv3.2 VCF files.  Will be deprecated once TVCv4.0 fully
@@ -110,13 +111,8 @@ if ( $fuzzy ) {
         exit if ( $response =~ /[(n|no)]/i );
         print "\n";
     }
-    elsif ( $hsids ) {
-        print "ERROR: COSMIC ID lookup and fuzzy searching is not compatible!\n\n";
-        print $usage;
-        exit 1;
-    }
-    elsif ( ! $positions ) {
-        print "ERROR: must include position information with the '-f' option\n\n";
+    elsif ( ! $positions && ! $hsids ) {
+        print "ERROR: must include position or hotspot ID query with the '-f' option\n\n";
         print $usage;
         exit 1;
     }
@@ -454,8 +450,6 @@ sub field_width {
 sub batch_lookup {
     # Process a lookup file, and load up @query_list
     my $file = shift;
-    #my $pos_query = shift;
-    #my $hs_query = shift;
     my @query_list;
 
     open( my $fh, "<", $$file ) or die "Can't open the lookup file: $!";
