@@ -6,9 +6,6 @@
 # message in output.  Can build from source, or I built a .deb file to installed it on 
 # Debian systems.
 #
-# TODO:
-#   - Check batch lookup.  Seems single COSMIC ID is ok.
-#
 # D Sims 2/21/2013
 #################################################################################################
 
@@ -85,7 +82,7 @@ GetOptions( "output|o=s"    => \$outfile,
             "noref|n"       => \$noref,
             "version|v"     => \$ver_info,
             "help|h"        => \$help )
-        or do { print "\n$usage\n"; exit 1; };
+        or die "\n$usage";
 
 sub help {
 	printf "%s - %s\n\n%s\n\n%s\n", $scriptname, $version, $description, $usage;
@@ -97,7 +94,7 @@ sub version {
 	exit;
 }
 
-help if ( $help );
+help if $help;
 version if $ver_info;
 
 # Double check that fuzzy option is combined intelligently with a position lookup.
@@ -134,18 +131,21 @@ if ( scalar( @ARGV ) < 1 ) {
 
 # Run parse the lookup file and add variants to the postions list if processing batch-wise
 # TODO: Add ability to batch proc COSIDs
-batch_lookup(\$lookup, \@positions, \@hsids) if $lookup;
+#batch_lookup(\$lookup, \@positions, \@hsids) if $lookup;
+my $query_list = batch_lookup(\$lookup) if $lookup;
 
 # Double check the query (position / cosid) format is correct
 my (@coords, @cosids);
-if ( ! @hsids ) {
+if ( @positions ) {
     @coords= map {split} @positions;
-    if ( @coords ) {
-        #( /\Achr\d+:\d+$/ ) ? next 
-        ( /\Achr[0-9YX]+:\d+$/i ) ? next 
-            :  do { print "Please use the following format for query strings 'chr#:position'\n"; exit 1; } for @coords;
+    for my $coord ( @coords ) {
+        if ( $coord !~ /\Achr[0-9YX]+:\d+$/i ) {
+            print "ERROR: '$coord' not valid. Please use the following format for position queries: 'chr#:position'\n";
+            exit 1;
+        }
     }
-} else {
+} 
+elsif ( @hsids ) {
     print "Checking cosmic id lookup...\n";
     my @valid_hs_ids = qw( BT COSM OM OMINDEL );
     @cosids = map {split} @hsids;
@@ -188,6 +188,14 @@ if ( ! $tvc32 && ! grep { /^##source=(Torrent Unified Variant Caller|"tvc 4.*)/ 
     }
 }
 close( $vcf_fh );
+
+
+
+
+
+
+
+
 
 # FIXME: Allow for running v3.2 VCF files.  Will be removed later.
 if ($tvc32) {
@@ -442,13 +450,16 @@ sub field_width {
 }
 
 sub batch_lookup {
-    # Process a lookup file, and load up @filter
+    # Process a lookup file, and load up @query_list
     my $file = shift;
-    my $filter = shift;
+    #my $pos_query = shift;
+    #my $hs_query = shift;
+
+    my @query_list;
 
     open( my $fh, "<", $$file ) or die "Can't open the lookup file: $!";
-    chomp( @$filter = <$fh> );
-    close($fh);
+    chomp( @query_list = <$fh> );
+    close $fh;
 
-    return $filter;
+    return \@query_list;
 }
