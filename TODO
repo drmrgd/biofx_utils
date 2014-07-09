@@ -1,0 +1,4 @@
+- Double check position parsing of v4.2.2 VCF files.  I may be missing output entries if there are 
+  common elements (i.e. non-unique hash keys)
+
+- Update getseq to parse more than just a string.
