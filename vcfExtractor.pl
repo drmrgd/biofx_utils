@@ -311,6 +311,18 @@ sub vaf_calc {
     my $rcov = shift;
     my $acov = shift;
 
+    local $SIG{__WARN__} = sub {
+        my $message = shift;
+        print $message;
+        print "Affected line: $.\n";
+        print "===============  DEBUG  ==============\n";
+        print "\t$$filter\n";
+        print "\t$$tcov\n";
+        print "\t$$rcov\n";
+        print "\t$$acov\n";
+        print "======================================\n\n";
+    };
+
     my $vaf;
 
     if ( $$filter eq "NOCALL" ) { 
