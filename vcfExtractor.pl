@@ -11,7 +11,6 @@
 
 use warnings;
 use strict;
-use autodie;
 
 use Getopt::Long qw(:config bundling auto_abbrev no_ignore_case );
 use List::Util qw{ sum min max };
@@ -255,10 +254,13 @@ sub parse_data {
 
     for ( @$data ) {
 
-        # IR generates CNV entries that are not compatible.  Skip for now
-        next if /CNV/;
-
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $gtr, $fro, $ro, $fao, $ao, $dp ) = split;
+
+        # FIXME: IR generates CNV and Fusion entries that are not compatible.  Skip for now; implement a sub for each later.
+        # next if /CNV/;
+        next if ( $alt =~ /[.><\]\d+]/ ); 
+        #print "next line in....\n";
+        #print "\t$_\n";
 
         # Clean up filter reason string
         $reason =~ s/^\.,//;
@@ -311,17 +313,18 @@ sub vaf_calc {
     my $rcov = shift;
     my $acov = shift;
 
-    local $SIG{__WARN__} = sub {
-        my $message = shift;
-        print $message;
-        print "Affected line: $.\n";
-        print "===============  DEBUG  ==============\n";
-        print "\t$$filter\n";
-        print "\t$$tcov\n";
-        print "\t$$rcov\n";
-        print "\t$$acov\n";
-        print "======================================\n\n";
-    };
+    #local $SIG{__WARN__} = sub {
+        #my $message = shift;
+        #print $message;
+        #print "Affected line: $.\n";
+        #print "===============  DEBUG  ==============\n";
+        #print "\tfilter:  $$filter\n";
+        #print "\ttot cov: $$tcov\n";
+        #print "\tref cov: $$rcov\n";
+        #print "\talt cov: $$acov\n";
+        #print "======================================\n\n";
+        #die();
+    #};
 
     my $vaf;
 
