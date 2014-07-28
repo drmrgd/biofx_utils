@@ -212,11 +212,12 @@ sub proc_vcf {
     }
 
     for my $file ( @$files ) {
-         my $cmd = "vcfExtractor --noref --NOCALL  $file";
+         my $cmd = "vcfExtractor --noref --NOCALL  $file 2>/dev/null";
          open( my $data_fh, "-|", $cmd ) || die "Can't open the stream: $!";
 
          while (<$data_fh>) {
-             next if ( /CHROM/ );
+             #next if ( /CHROM/ );
+             next until ( /^chr/ );
              my @fields = split;
              if ( $fields[6] > $covfilter ) {
                  my $varid = join( ':', @fields[0,1,2] );
