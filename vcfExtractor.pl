@@ -298,7 +298,11 @@ sub parse_data {
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
         my ( $ovat_gc, $ovat_vc, $gene_name );
-        ($func eq '.') ? next : (($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) );
+        #print "func  => $func\n";
+        #next;
+
+        # FIXME: Getting error when no FUNC block.  Should be skipping over this.  
+        ($func eq '.' || $func eq '---') ? next : (($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) );
 
         # FIXME: IR generates CNV and Fusion entries that are not compatible.  Skip for now; implement a sub for each later.
         next if ( $alt =~ /[.><\]\d+]/ ); 
