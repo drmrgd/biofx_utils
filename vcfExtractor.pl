@@ -247,9 +247,9 @@ my @extracted_data = qx/ vcf-query $inputVCF -f $vcfFormat /;
 my %vcf_data = parse_data( \@extracted_data );
 
 # XXX
-my $foo;
-($ovat_filter) ? ($foo = "$on!") : ($foo = "$off.");
-print "$info OVAT filter status: $foo\n";
+my $ovat_stat;
+($ovat_filter) ? ($ovat_stat = "$on!") : ($ovat_stat = "$off.");
+print "$info OVAT filter status: $ovat_stat\n";
 
 # Filter and format extracted data or just format and print it out.
 if ( @cosids ) {
@@ -298,13 +298,14 @@ sub parse_data {
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
         my ( $ovat_gc, $ovat_vc, $gene_name );
-        #print "func  => $func\n";
-        #next;
 
+        # XXX
         # FIXME: Getting error when no FUNC block.  Should be skipping over this.  
-        ($func eq '.' || $func eq '---') ? next : (($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) );
+        #($func eq '.' || $func eq '---') ? next : (($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) );
+        ($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) unless $func =~ /^[.-]+/;
+        #($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) unless ($func eq '.' || $func eq '---'); 
 
-        # FIXME: IR generates CNV and Fusion entries that are not compatible.  Skip for now; implement a sub for each later.
+        # IR generates CNV and Fusion entries that are not compatible.  Skip for now; implement a sub for each later.
         next if ( $alt =~ /[.><\]\d+]/ ); 
 
         # Clean up filter reason string
@@ -501,7 +502,6 @@ sub ovat_filter {
     }
 
     format_output($data);
-
     print {$out_fh} "\n>>> No Oncomine Annotated Variants Found! <<<\n" unless %$data;
 }
 
@@ -609,4 +609,15 @@ sub get_ovat_annot {
     $gene_name = $$json_annot[0]{'gene'} // '---';
 
     return ($gene_class, $variant_class, $gene_name);
+}
+
+sub remove_dups {
+    # TVC v4.2 can have both a de novo and Hotspot call for the same exact variant due to the way it merges. 
+    # only keep the Hotspot if it exists.
+    my $data = shift;
+    my %deduped;
+
+    for my $variant (keys %$data ) {
+        # TODO: get rid of duplicate keys
+    }
 }
