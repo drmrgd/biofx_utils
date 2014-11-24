@@ -8,14 +8,16 @@
 ##########################################################################################################
 use warnings;
 use strict;
+use autodie;
 
 use List::Util qw{ min max sum };
 use Getopt::Long qw{ :config no_ignore_case };
+use Sort::Versions;
 use File::Basename;
 use Data::Dump;
 
 my $scriptname = basename($0);
-my $version = "v4.2.1_062014";
+my $version = "v4.3.0_112414";
 my $description = <<EOT;
 Program to read in all of the variant call table files from an Ion Torrent run on CEPH, and report out
 the ID and number of times each variant is seen.  This is used to track the number of variants reported 
@@ -66,18 +68,18 @@ version if $verinfo;
 help if $help;
 
 my @filesList;
-my $totRuns;
+my $total_runs;
 if ( ! @ARGV ) {
     print "ERROR: no files loaded for analysis\n";
     exit 1;
 } else {
     @filesList = @ARGV;
-    $totRuns = scalar @filesList;
+    $total_runs = scalar @filesList;
 }
 
 # Set up Tally output file.
 my ($out_fh, $outfile);
-($output) ? ($outfile = $output) : ($outfile = "CEPH_".$totRuns."_Run_Variant_Tally.tsv");
+($output) ? ($outfile = $output) : ($outfile = "CEPH_".$total_runs."_Run_Variant_Tally.tsv");
 if ( $preview ) {
     $out_fh = \*STDOUT;
 } else {
@@ -90,7 +92,6 @@ my ( %all_variants, %var_freq, %var_cov );
 
 # Set up fields to use to capture data from the tables.  Set up here so that we can mod it easy later when the 
 # tables change.
-# NOTE: removed gene id
 my %fields = (
     "v3.2.1"  => { "varid" => [qw(0 1 6 7)],
                    "data"  => [qw(0 1 3 6 7 8 10)],
@@ -105,7 +106,6 @@ my %fields = (
 );
 
 my $ts_version;
-#($classic) ? ( $ts_version = "v3.2.1" ) : ( ($vcf_input) ? ( $ts_version = "VCF" ) : ($ts_version = "v4.0.2" ) );
 if ($classic) {
     $ts_version = "v3.2.1";
 }
@@ -124,44 +124,38 @@ if ( $vcf_input ) {
 }
 
 # Get some field width data
-# XXX
 my ( $rwidth, $awidth ) = field_width( \%all_variants );
 
 # Get statistics about each variant and generate a formated hash table to print out the results with 
 my %results;
 foreach my $variant ( keys %all_variants) {
 	my $count = @{$all_variants{$variant}};
-    # NOTE: removed gene ID
-    #my ( $gene, $chr, $pos, $ref, $alt ) = split( /:/, $variant );
     my ( $chr, $pos, $ref, $alt ) = split( /:/, $variant );
 	
 	# Get min, max, median coverage and frequency info	
 	my ( $minCov, $maxCov, $meanCov ) = stats( \@{$var_cov{$variant}} );
 	my ( $minFreq, $maxFreq, $meanFreq ) = stats( \@{$var_freq{$variant}} );
-    my $detection_freq = sprintf( "%0.2f", ($count/$totRuns)*100);
+    my $detection_freq = sprintf( "%0.2f", ($count/$total_runs)*100);
 
-    # NOTE: removed gene ID
-    #my $format = "%-8s %-8s %-12d %-${rwidth}s %-${awidth}s %-10s %-7d %-7d %-7d %8.2f%% %8.2f%% %8.2f%%";
-    #my $varLine = sprintf( $format, $gene, $chr, $pos, $ref, $alt, "$count/$totRuns", $minCov, $meanCov, $maxCov, $minFreq, $meanFreq, $maxFreq );
+    $results{$variant} = [$chr, $pos, $ref, $alt, "$count/$total_runs", $minCov, $meanCov, $maxCov, $minFreq, $meanFreq, $maxFreq];
 
-    my $format = "%-8s %-12d %-${rwidth}s %-${awidth}s %-10s %-7d %-7d %-7d %8.2f%% %8.2f%% %8.2f%%";
-    my $varLine = sprintf( $format, $chr, $pos, $ref, $alt, "$count/$totRuns", $minCov, $meanCov, $maxCov, $minFreq, $meanFreq, $maxFreq );
-
-    $results{$variant} = [$varLine, $detection_freq];
 }
 
 # Print out the collected summary data 
-#my @header_cols = qw{ Gene Chr Position Ref Var Count MinCov MedCov MaxCov MinVAF MedVAF MaxVAF };
-# NOTE: removed gene ID
 my @header_cols = qw{ Chr Position Ref Var Count MinCov MedCov MaxCov MinVAF MedVAF MaxVAF };
 my $header = sprintf( "%-8s %-12s %-${rwidth}s %-${awidth}s %-10s %-7s %-7s %-7s %9s %9s %9s", @header_cols ); 
-my $title = "Frequency of detected variants with at least $covfilter reads in $totRuns CEPH runs";
+my $title = "Frequency of detected variants with at least $covfilter reads in $total_runs CEPH runs";
 
 print $out_fh "$title\n\n";
 print $out_fh "$header\n";
 
-for my $variant ( sort { $results{$b}[1] <=> $results{$a}[1] } keys %results ) {
-    print $out_fh $results{$variant}[0], "\n";
+my $format = "%-8s %-12d %-${rwidth}s %-${awidth}s %-10s %-7d %-7d %-7d %8.2f%% %8.2f%% %8.2f%%\n";
+for my $variant ( sort { 
+        versioncmp( $results{$b}->[4], $results{$a}->[4] ) || 
+        versioncmp( $results{$a}->[0], $results{$b}->[0] ) || 
+        versioncmp( $results{$a}->[1], $results{$b}->[1] ) 
+    } keys %results ) {
+        printf $out_fh $format, @{$results{$variant}};
 }
 
 sub proc_datatable {
@@ -192,8 +186,6 @@ sub proc_datatable {
             }
         }
         close $in_fh;
-        #dd \%all_variants;
-        #exit;
     }
     return;
 }
@@ -216,7 +208,6 @@ sub proc_vcf {
          open( my $data_fh, "-|", $cmd ) || die "Can't open the stream: $!";
 
          while (<$data_fh>) {
-             #next if ( /CHROM/ );
              next until ( /^chr/ );
              my @fields = split;
              if ( $fields[6] > $covfilter ) {
@@ -227,8 +218,6 @@ sub proc_vcf {
              }
          }
          close $data_fh;
-         #dd \%all_variants;
-         #exit;
      }
      return;
 }
@@ -251,12 +240,7 @@ sub field_width {
     my $awidth = 0;
 
     for my $var ( keys %$hash_ref ) {
-        #my ($ref, $alt) = $var =~ /.*?(\w+):(\w+)$/;
         my ($chr, $start, $ref, $alt) = split( /:/, $var );
-        #print "var: $var\n";
-        #print "ref: $ref\nalt: $alt\n";
-        #next;
-        
         $rwidth = length( $ref ) + 3  if ( length( $ref ) > $rwidth ); 
         $awidth = length( $alt ) + 3  if ( length( $alt ) > $awidth );
     }
