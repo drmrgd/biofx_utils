@@ -2,6 +2,11 @@
 # Read in all the variant call files, filter and truncate the data, and associate with the run ID.  Set
 # up to be able to find the common variants in all the runs.  Add column to indicate if it's one of the 
 # variants located within the NIST CEPH standard VCF file.
+# 
+# TODO:
+#   - Clean up output file generation.  Don't make an output file unless it's needed!
+#   - Better error checking for input files. erroneous output files from frist todo list item are 
+#     breaking the program when globbed in
 #
 # Created: 2/27/2013 - Dave Sims
 #
@@ -11,13 +16,13 @@ use strict;
 use autodie;
 
 use List::Util qw{ min max sum };
-use Getopt::Long qw{ :config no_ignore_case };
+use Getopt::Long qw{ :config auto_abbrev bundling no_ignore_case };
 use Sort::Versions;
 use File::Basename;
 use Data::Dump;
 
 my $scriptname = basename($0);
-my $version = "v4.3.0_112414";
+my $version = "v4.4.0_112614";
 my $description = <<EOT;
 Program to read in all of the variant call table files from an Ion Torrent run on CEPH, and report out
 the ID and number of times each variant is seen.  This is used to track the number of variants reported 
@@ -45,13 +50,13 @@ my $classic;
 my $vcf_input;
 
 # Set up some commandline opts
-GetOptions( "Classic"       => \$classic,
-            "VCF"           => \$vcf_input,
-            "coverage=i"    => \$covfilter,
-            "preview"       => \$preview,
-            "output=s"      => \$output,
-            "version"       => \$verinfo,
-            "help"          => \$help,
+GetOptions( "Classic|C"       => \$classic,
+            "VCF|V"           => \$vcf_input,
+            "coverage|c=i"    => \$covfilter,
+            "preview|p"       => \$preview,
+            "output|o=s"      => \$output,
+            "version|v"       => \$verinfo,
+            "help|h"          => \$help,
     ) or die "\n$usage";
 
 sub help {
@@ -78,6 +83,7 @@ if ( ! @ARGV ) {
 }
 
 # Set up Tally output file.
+#TODO: Clean this up.  Don't generate output files unless necessary.
 my ($out_fh, $outfile);
 ($output) ? ($outfile = $output) : ($outfile = "CEPH_".$total_runs."_Run_Variant_Tally.tsv");
 if ( $preview ) {
@@ -198,15 +204,21 @@ sub proc_vcf {
     print "Processing '$$version' data...\n";
 
     # Check to see that we have vcfExtractor in our $PATH
-    if ( ! `which vcfExtractor` ) {
+    my $vcfextractor_path;
+    unless ( ($vcfextractor_path = qx(which vcfExtractor)) || ($vcfextractor_path = qx(which vcfExtractor.pl)) ) {
         print "ERROR: 'vcfExtractor' required when inputting VCF files, but program not found.  Check to see that this is in your path\n";
         exit 1;
     }
+    chomp $vcfextractor_path;
+
+    #if ( ! `which vcfExtractor` && ! `which vcfExtractor.pl` ) {
+        #print "ERROR: 'vcfExtractor' required when inputting VCF files, but program not found.  Check to see that this is in your path\n";
+        #exit 1;
+    #}
 
     for my $file ( @$files ) {
-         my $cmd = "vcfExtractor --noref --NOCALL  $file 2>/dev/null";
+         my $cmd = qq($vcfextractor_path --noref --NOCALL $file 2>/dev/null);
          open( my $data_fh, "-|", $cmd ) || die "Can't open the stream: $!";
-
          while (<$data_fh>) {
              next until ( /^chr/ );
              my @fields = split;
