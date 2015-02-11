@@ -362,6 +362,19 @@ sub parse_data {
                 # TODO: why is the index not matching the func index?
                 print "index($alt_index)  <=> ref($oref_array[$index])  <=>  alt($oalt_array[$index])\n";
 
+                # Grab the OVAT annotation information from the FUNC block if possible.
+                my ($ovat_gc, $ovat_vc, $gene_name);
+                if ( $func eq '.' ) {
+                    push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $ovat;
+                    $ovat_vc = $ovat_gc = $gene_name = "NULL";
+                } else {
+                    #($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) unless $func eq '---'; 
+                    #($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func, \$index) unless $func eq '---'; 
+                    ($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func, \$oalt_array[$index], \$oref_array[$index] ); 
+                }
+                # XXX
+                next;
+
                 # Start the var string.
                 push( @{$parsed_data{$var_id}},
                     $parsed_pos,
@@ -393,24 +406,12 @@ sub parse_data {
                     }
                 }
 
-                # Grab the OVAT annotation information from the FUNC block if possible.
-                my ($ovat_gc, $ovat_vc, $gene_name);
-                if ( $func eq '.' ) {
-                    push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $ovat;
-                    $ovat_vc = $ovat_gc = $gene_name = "NULL";
-                } else {
-                    #($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) unless $func eq '---'; 
-                    #($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func, \$index) unless $func eq '---'; 
-                    ($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func, \$index); 
-                }
-                # XXX
-
                 push( @{$parsed_data{$var_id}}, $gene_name, $ovat_gc, $ovat_vc ) if $ovat;
             }
         }
     }
     #dd \%parsed_data;
-    #exit;
+    exit;
     return %parsed_data;
 }
 
@@ -636,12 +637,33 @@ sub batch_lookup {
 sub get_ovat_annot {
     # If this is IR VCF, add in the OVAT annotation. 
     my $func = shift;
-    my $index = shift;
+    my $oalt = shift;
+    my $oref = shift;
     $$func =~ tr/'/"/;
 
     #my ($gene_class, $variant_class, $gene_name);
     my $json_annot = JSON::XS->new->decode($$func);
+    dd $json_annot;
+    #exit;
+    return;
+
+    my $index;
+    for my $iter (0..$#{$json_annot}) {
+        print "testing $$oref > $$oalt...\n";
+        print "iter:  $iter\n";
+        #$index = $iter if ($$json_annot[$index]->{'normalizedAlt'} eq $$oalt);
+        if ($$json_annot[$index]->{'normalizedAlt'} eq $$oalt && $$json_annot[$index]->{'normalizedRef'} eq $$oref) {
+            $index = $iter;
+            last;
+        }
+    }
+
+    #my ($index) = grep { $$oalt } 0..$#{$json_annot};
+    print "index:  $index\n";
+
     
+    
+=cut
     # TODO: May need to tweak this. What if FUNC > 1?
     # XXX
     my $gene_class = $$json_annot[$$index]{'oncomineGeneClass'} // '---';
@@ -669,4 +691,5 @@ sub get_ovat_annot {
     print "======================================================\n\n";
 
     return ($gene_class, $variant_class, $gene_name);
+=cut
 }
