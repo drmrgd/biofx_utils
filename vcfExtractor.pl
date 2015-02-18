@@ -360,7 +360,8 @@ sub parse_data {
                 }
 
                 # TODO: why is the index not matching the func index?
-                print "index($alt_index)  <=> ref($oref_array[$index])  <=>  alt($oalt_array[$index])\n";
+                print "index($alt_index)  <=> oref($oref_array[$index])  <=>  oalt($oalt_array[$index])  <=> omapalt($omapalt_array[$index])\n";
+                print "$func\n";
 
                 # Grab the OVAT annotation information from the FUNC block if possible.
                 my ($ovat_gc, $ovat_vc, $gene_name);
@@ -370,7 +371,7 @@ sub parse_data {
                 } else {
                     #($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func ) unless $func eq '---'; 
                     #($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func, \$index) unless $func eq '---'; 
-                    ($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func, \$oalt_array[$index], \$oref_array[$index] ); 
+                    ($ovat_gc, $ovat_vc, $gene_name) = get_ovat_annot( \$func, \$oalt_array[$index], \$oref_array[$index], \$omapalt_array[$index] ); 
                 }
                 # XXX
                 next;
@@ -639,33 +640,73 @@ sub get_ovat_annot {
     my $func = shift;
     my $oalt = shift;
     my $oref = shift;
+    my $omapalt = shift;
     $$func =~ tr/'/"/;
 
-    #my ($gene_class, $variant_class, $gene_name);
+    my ($anchor, $norm_ref, $norm_alt);
+    if ($$oref eq '-') {
+        #this is an insertion event
+        ($anchor) = $$omapalt =~ /.*?(.)$$oalt.*/; 
+        $norm_ref = $anchor;
+        $norm_alt = "$anchor$$oalt";
+    }
+    elsif ($$oalt eq '-') {
+        #this is a deletion event
+        ($anchor) = $$omapalt =~ /.*?(.)$$oref.*/;
+        $norm_ref = "$anchor$$oref";
+        $norm_alt = $anchor;
+    }
+    else {
+        $norm_ref = $$oref;
+        $norm_alt = $$oalt;
+    }
+
+    # XXX
+    print "norm ref: $norm_ref\n";
+    print "norm alt: $norm_alt\n";
+    print "\n";
+
     my $json_annot = JSON::XS->new->decode($$func);
-    dd $json_annot;
-    #exit;
-    return;
 
     my $index;
-    for my $iter (0..$#{$json_annot}) {
-        print "testing $$oref > $$oalt...\n";
-        print "iter:  $iter\n";
-        #$index = $iter if ($$json_annot[$index]->{'normalizedAlt'} eq $$oalt);
-        if ($$json_annot[$index]->{'normalizedAlt'} eq $$oalt && $$json_annot[$index]->{'normalizedRef'} eq $$oref) {
-            $index = $iter;
-            last;
+    my %data;
+    for my $func_block ( @$json_annot ) {
+        next unless $$func_block{'normalizedRef'};
+        if ( $$func_block{'normalizedRef'} eq $norm_ref && $$func_block{'normalizedAlt'} eq $norm_alt ) {
+            %data = %$func_block;
         }
     }
 
-    #my ($index) = grep { $$oalt } 0..$#{$json_annot};
-    print "index:  $index\n";
+    return unless %data;
 
-    
-    
+    my $gene_class    = $data{'oncomineGeneClass'}    // '---';
+    my $variant_class = $data{'oncomineVariantClass'} // '---';
+    my $gene_name     = $data{'gene'}                 // '---';
+    my $protein       = $data{'protein'}              // '---';
+    my $coding        = $data{'coding'}               // '---';
+    my $function      = $data{'function'}             // '---';
+    my $ref           = $data{'normalizedRef'}        // '---';
+    my $alt           = $data{'normalizedAlt'}        // '---';
+    my $exon;
+    ($data{'location'} eq 'exonic') ? ($exon = $data{'exon'}) : ($exon = 'intronic');
+
+    print "======================  DEBUG  =======================\n\n";
+    #print "index    => $$index\n";
+    print "gc       => $gene_class\n";
+    print "vc       => $variant_class\n";
+    print "gene     => $gene_name\n";
+    print "ref      => $ref\n";
+    print "alt      => $alt\n";
+    print "AA       => $protein\n";
+    print "CDS      => $coding\n";
+    print "function => $function\n";
+    print "exon     => $exon\n";
+    print "======================================================\n\n";
+
+    #dd %data if %data;
+
 =cut
     # TODO: May need to tweak this. What if FUNC > 1?
-    # XXX
     my $gene_class = $$json_annot[$$index]{'oncomineGeneClass'} // '---';
     my $variant_class = $$json_annot[$$index]{'oncomineVariantClass'} // '---';
     my $gene_name = $$json_annot[$$index]{'gene'} // '---';
