@@ -16,7 +16,6 @@
 # 2/19/2014 - v2.2.0:  Fixed the start with CSV option.  I added the command line option, but never actually
 #                      coded a way to use it in the script!  Now should be able to start with a CSV file
 #                      instead of an XLS file.
-#
 # TODO:
 #     - Make the 'version' information more flexible for differnt binning of samples.  Maybe a CLI option?
 #
@@ -26,12 +25,13 @@ use strict;
 use warnings;
 use feature qw{ state };
 use Getopt::Long;
-use Cwd;
 use Data::Dump;
 use File::Basename;
 
-( my $scriptname = $0 ) =~ s/^(.*\/)+//;
-my $version = "v2.2.0";
+use constant DEBUG => 0;
+
+my $scriptname = basename($0);
+my $version = "v2.3.0_040615";
 my $description = <<"EOT";
 Read in up to four XLS files generated from GeneMed or CSV files generated from those reports, and create
 a venn diagram that compares the up to three samples.  This program was written with the Ion Torrent MPACT assay
@@ -88,7 +88,6 @@ if ( @ARGV < 2 ) {
 
 #########------------------------------ END ARG Parsing ---------------------------------#########
 my %results;
-my $cwd = getcwd;
 my @datasets = @ARGV;
 my ($csv_file, $analysis_version, $sample, $gm_id, $run_num);
 
@@ -124,11 +123,19 @@ sub generate_csv {
     use IPC::Cmd qw{ can_run run };
 
     my $input_file = shift;
-    my ($gm_id, $sample_name, $run_num, $foo, $analysis_string) = split( /_/, basename( $$input_file ) );
-    my ($version) = $analysis_string =~ /(.*?)\.xls/;
-    my $new_name = join( "_", $sample_name, $run_num, $version ) . ".csv";
+    my ($gm_id, $sample_name, $run_num, undef, $analysis_string) = split(/_/, basename($$input_file));
+    $analysis_string =~ s/\.xls//;
+    my $new_name = join( "_", $sample_name, $run_num, $analysis_string) . ".csv";
 
-    my $prog_path = can_run( 'xls2csv' ) or 
+    if (DEBUG == 1) {
+        print "=============================  DEBUG  ==============================\n";
+        print "\tnew name     => $new_name\n";
+        print "\tversion      => $analysis_string\n";
+        print "\tsample name  => $sample_name\n";
+        print "====================================================================\n\n";
+    }
+
+    my $prog_path = can_run('xls2csv') or 
         do { 
             print "ERROR: xls2csv is not installed. Install this program or manually create a CSV file and rerun with the '-c' option.\n";
             exit 1;
@@ -136,17 +143,15 @@ sub generate_csv {
 
     my $cmd = "$prog_path -x $$input_file -w 'Sequence Profiling Report' -c $new_name";
     my $buffer;
-    if ( scalar run( command  => $cmd,
-                     verbose  => 0,
-                     buffer   => \$buffer,
-                     timeout  => 20 )
-    ) {
+    #if ( scalar run(command => $cmd, verbose => 0, buffer => \$buffer, timeout => 20)) {
+    if (run(command => $cmd, verbose => 0, buffer => \$buffer, timeout => 20)) {
         print "Successfully created the CSV file: $new_name\n";
     } else {
         print "$buffer\n";
         exit 1;
     }
-    return ($new_name, $version, $sample_name);
+
+    return ($new_name, $analysis_string, $sample_name);
 }
 
 sub import_csv {
@@ -177,7 +182,6 @@ sub import_csv {
 sub venn_table {
     # Make a table of variant call data useful for generating a Venn diagram.  Also pull out aMOIs
     # and store in a new hash to use for aMOI only Venn.
-    
     my $data = shift;
     my $samp = shift;
     my (%all_vars, %amois);
@@ -214,14 +218,12 @@ sub venn_table {
 sub draw_venn {
     # Bootstrap R and draw Venn Diagram directly from this script.  Can create up to 4 diagrams
     # with this function
-
     use Statistics::R;
     my $data = shift;
     my $title = shift;
 
     # Prepare data to pass to R
     my @categories = keys %$data;
-
     if ( @categories > 4 ) {
         print "ERROR: more than 4 datasets detected.  We can not use this to draw more than a 4-way Venn Diagram\n";
         exit 1;
@@ -232,9 +234,7 @@ sub draw_venn {
     }
 
     (my $venn_outfile = $title) =~ s/\s/_/g;
-
     my @rbins = map { "TVC" . $_ } keys %$data;
-
     my @color_pallet = qw{ "red" "dodgerblue" "forestgreen" "yellow" };
 
     my $R = Statistics::R->new();
@@ -259,8 +259,9 @@ sub draw_venn {
 
     # Create R list elements string
     my $relems = "elements <- list( " . join( ", ", @elements ) . " )";
-    $R->run( "$relems" );
+    $R->run("$relems");
 
+    # Create plot obj
     my $venn_plot = <<EOF;
     venn.diagram( elements,
                   filename = outfile,
@@ -278,7 +279,7 @@ sub draw_venn {
                   fontfamily = "sans",
                   cat.fontface = "bold",
                   cat.fontfamily = "sans",
-                  #cat.dist = 0.1,
+                  cat.dist = 0.1,
                   margin = 0.3 )
 EOF
     $R->run( qq/$venn_plot/ );
