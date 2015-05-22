@@ -22,7 +22,7 @@ use XML::Twig;
 use Sort::Versions;
 
 my $scriptname = basename($0);
-my $version = "v1.0.0_012615";
+my $version = "v2.0.0_052215";
 my $description = <<"EOT";
 Program to retrieve sequence from the UCSC DAS server.  Enter sequence coordinates in the form of 'chr:start-stop',
 and the output will be sequence from hg19, padded by 10 bp.  Extra padding can be added with the '-p' option.  
@@ -42,6 +42,7 @@ USAGE: $scriptname [options] <chr:start-stop>
     -p, --pad       Pad the output sequence (Default is 10bp).
     -b, --batch     Load up a batch file of positions to search.
     -o, --output    Send output to custom file.  Default is STDOUT.
+    -n, --name      Custom sequence name for output (DEFAULT: sequence position).
     -v, --version   Version information
     -h, --help      Print this help information
 EOT
@@ -51,9 +52,11 @@ my $ver_info;
 my $outfile;
 my $padding = 10;
 my $batch_file;
+my $seq_name;
 
 GetOptions( "padding|p=i"   => \$padding,
             "batch|b=s"     => \$batch_file,
+            "name|n=s"      => \$seq_name,
             "output|o=s"    => \$outfile,
             "version|v"     => \$ver_info,
             "help|h"        => \$help )
@@ -88,26 +91,22 @@ if ( $outfile ) {
 }
 
 #########------------------------------ END ARG Parsing ---------------------------------#########
-my @queries;
+my %queries;
 
 if ($batch_file) {
-    my @batch_list = proc_batch( $batch_file );
-    for my $coord (@batch_list) {
-        my $formatted_query = gen_queries($coord);
-        push(@queries, $formatted_query);
-    }
+    %queries = proc_batch($batch_file);
 } else {
     my $input_query = shift;
-    my $formatted_query = gen_queries($input_query);
-    push(@queries, $formatted_query);
+    my $formatted_query = format_query($input_query);
+    $seq_name //= $formatted_query;
+    $queries{$input_query} = $formatted_query;
 }
 
-my $URL = "http://genome.ucsc.edu/cgi-bin/das/hg19/dna?segment=";
-
 # Query the UCSC DAS server and extract sequence from the resulting XML file.
+my $URL = "http://genome.ucsc.edu/cgi-bin/das/hg19/dna?segment=";
 my %result;
-foreach ( @queries ) {
-	my $query = $URL . $_;
+for (keys %queries) {
+	my $query = $URL . $queries{$_};
 	my $twig = XML::Twig->new();
 	$twig->parse( LWP::Simple::get( $query ) );
 	for my $seq ( $twig->findnodes( '//DNA' ) ) {
@@ -118,11 +117,12 @@ foreach ( @queries ) {
 
 # Print out the formatted results
 for ( sort { versioncmp( $a, $b ) } keys %result ) {
-    ( my $seq_id = $_) =~ s/,/-/g;
+    my $seq_id;
+    ($seq_name) ? ($seq_id = $seq_name) : (($seq_id = $_) =~ s/,/-/g);
     print {$out_fh} ">$seq_id" . uc($result{$_}) . "\n";
 }
 
-sub gen_queries {
+sub format_query {
     my $input_string = shift;
 
     my ($chr, $start, $end) = $input_string =~ /^(?:chr)?(\d+).(\d+)(?:\D(?:[\-,\. ])?(\d+))?$/;
@@ -131,19 +131,25 @@ sub gen_queries {
     $end += $padding;
 
     my $formatted_query;
-    # TODO:  Bug with the string if someone has put the end before the start.
-    ($end > $start) ? $formatted_query = "chr$chr:$end,$start" : $formatted_query = "chr$chr:$start,$end";
-
+    ($end > $start) ? ($formatted_query = "chr$chr:$start,$end") : ($formatted_query = "chr$chr:$end,$start");
     return $formatted_query;
 }
 
 sub proc_batch {
     # read in a batch file if many positons needed
     my $input_file = shift;
+    my %query_list;
 
     open(my $fh, "<", $input_file);
-    my @query_list = map { chomp($_); $_ } <$fh>;
+    while (<$fh>) {
+        chomp;
+        my @elems = split(/\t/);
+        if (@elems == 2) {
+            $query_list{$elems[0]} = format_query($elems[1]);
+        } else {
+            $query_list{$elems[0]} = format_query($elems[0]);
+        }
+    }
     close $fh;
-
-    return @query_list;
+    return %query_list;
 }
