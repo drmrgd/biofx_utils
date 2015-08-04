@@ -22,7 +22,7 @@ use XML::Twig;
 use Sort::Versions;
 
 my $scriptname = basename($0);
-my $version = "v1.0.0_012615";
+my $version = "v1.1.0_080415";
 my $description = <<"EOT";
 Program to retrieve sequence from the UCSC DAS server.  Enter sequence coordinates in the form of 'chr:start-stop',
 and the output will be sequence from hg19, padded by 10 bp.  Extra padding can be added with the '-p' option.  
@@ -39,6 +39,7 @@ EOT
 
 my $usage = <<"EOT";
 USAGE: $scriptname [options] <chr:start-stop>
+    -n, --name      Custom sequence name for the FASTA output (default: position)
     -p, --pad       Pad the output sequence (Default is 10bp).
     -b, --batch     Load up a batch file of positions to search.
     -o, --output    Send output to custom file.  Default is STDOUT.
@@ -51,8 +52,10 @@ my $ver_info;
 my $outfile;
 my $padding = 10;
 my $batch_file;
+my $name;
 
-GetOptions( "padding|p=i"   => \$padding,
+GetOptions( "name|n=s"      => \$name, 
+            "padding|p=i"   => \$padding,
             "batch|b=s"     => \$batch_file,
             "output|o=s"    => \$outfile,
             "version|v"     => \$ver_info,
@@ -118,7 +121,8 @@ foreach ( @queries ) {
 
 # Print out the formatted results
 for ( sort { versioncmp( $a, $b ) } keys %result ) {
-    ( my $seq_id = $_) =~ s/,/-/g;
+    my $seq_id;
+    ($name) ? ($seq_id = $name) : (($seq_id = $_) =~ s/,/-/g );
     print {$out_fh} ">$seq_id" . uc($result{$_}) . "\n";
 }
 
