@@ -22,7 +22,7 @@ use XML::Twig;
 use Sort::Versions;
 
 my $scriptname = basename($0);
-my $version = "v1.1.0_080415";
+my $version = "v1.2.0_080515";
 my $description = <<"EOT";
 Program to retrieve sequence from the UCSC DAS server.  Enter sequence coordinates in the form of 'chr:start-stop',
 and the output will be sequence from hg19, padded by 10 bp.  Extra padding can be added with the '-p' option.  
@@ -129,7 +129,8 @@ for ( sort { versioncmp( $a, $b ) } keys %result ) {
 sub gen_queries {
     my $input_string = shift;
 
-    my ($chr, $start, $end) = $input_string =~ /^(?:chr)?(\d+).(\d+)(?:\D(?:[\-,\. ])?(\d+))?$/;
+    my ($chr, $start, $end) = $input_string =~ /^(?:chr)?([XY0-9]{1,2})[^\d+](\d+)[-,.\t ]*(\d+)$/;
+
     $end = $start unless $end;
     $start -= $padding;
     $end += $padding;
