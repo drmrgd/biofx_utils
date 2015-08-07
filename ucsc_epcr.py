@@ -8,7 +8,6 @@
 # Re-writted ane repurposed for my own ill gains!
 #
 #  TODO:
-#     -  Fix the single query search method
 #     -  Add an optional name field to the single search query method.
 #     -  Fix the TSV input method to accept a primer sequence name
 #     -  Try to parallelize in order to speed up batch queries.
@@ -47,7 +46,7 @@ from pprint import pprint
 from collections import defaultdict
 
 
-version = '0.6.0_080615'
+version = '0.8.0_080715'
 def usage():
     print __doc__
     print """\
@@ -156,11 +155,12 @@ def insilico_pcr_pairs(fwd, rev, name, db, out, quiet, perfect=15, good=15, size
         count = 0
         if re.search('No matches to ', result): 
             sys.stderr.write('no match for %s ~ %s\n' %(fwd, rev))
-            data = [name, 'no match!']
+            # TODO: need a better way to handle missed results.
+            data = ['---','---','---',name, '---', '---', fwd, rev, 'no match!']
         else:
             sys.stderr.write('match!\n')
             for m in re.finditer('><A HREF=".*">(.*):(\d+)([-+])(\d+)</A> (.*?) ([ACTG]+) ([ACTG]+)', result):
-                data = [m.group(1), int(m.group(2))-1, m.group(4), name, m.group(3), m.group(5), m.group(6), m.group(7)]
+                data = [m.group(1), int(m.group(2))-1, m.group(4), name, m.group(3), m.group(5), m.group(6), m.group(7), '']
     return data 
 
 def write_results(data):
@@ -171,13 +171,12 @@ def write_results(data):
     else:
         fh = sys.stdout
 
-    fh.write('%s\t%s\t%s\t\t%s\t\t%s\t\t%s\t%s\t%s\t\t%s\n' % ('Line', 'chr', 'start', 'end', 'name', 'strand', 'size', 'forward_primer', 'reverse_primer'))
+    template = '{0:<8}{4:<18}{1:<9}{2:<13}{3:<13}{5:<9}{6:<9}{7:<35}{8:<35}{9:<}\n'
+    fh.write(template.format('line', 'chr', 'start', 'end', 'name', 'strand', 'size', 'forward_primer', 'reverse_primer', ''))
     match_num=0
     for query in data:
         for elem in data[query]:
-            fh.write('%s\t' % str(match_num + 1))
-            fh.write('\t'.join(map(str,elem,)))
-            fh.write('\n')
+            fh.write(template.format(match_num+1, *elem)) 
             match_num += 1
     return
 
