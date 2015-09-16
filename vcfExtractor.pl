@@ -359,6 +359,7 @@ sub parse_data {
                         }
                     }
                 }
+                # TODO: ADd functional annotation to the hash here.
                 push( @{$parsed_data{$var_id}}, $gene_name, $hgvs, $ovat_gc, $ovat_vc ) if $annots;
             }
         }
@@ -431,6 +432,7 @@ sub get_ovat_annot {
         print "exon     => $exon\n";
         print "======================================================\n\n";
     }
+    #TODO: return functional annotation here.
     return ($gene_class, $variant_class, $gene_name, $hgvs);
 }
 
@@ -583,17 +585,23 @@ sub format_output {
     my ($format, @header);
     if ($nocall) {
         ($w1, $w2) = field_width( $data );
-        $format = "%-19s %-${w1}s %-${w2}s %-10s %-10s %-10s %-10s %-12s\n";
+        $format = "%-19s 1{{%-${w1}s}} 2{{%-${w2}s}} %-10s %-10s %-10s %-10s %-12s\n";
         @header = qw( CHROM:POS REF ALT VAF TotCov RefCov AltCov COSID );
     } else {
         ($w1, $w2, $w3) = field_width( $data );
-        $format = "%-19s %-${w1}s %-${w2}s %-10s %-${w3}s %-10s %-10s %-10s %-10s %-12s\n";
+        #$format = "%-19s %-${w1}s %-${w2}s %-10s %-${w3}s %-10s %-10s %-10s %-10s %-12s\n";
+        $format = "%-19s 1{{%-${w1}s}} 2{{%-${w2}s}} %-10s 3{{%-${w3}s}} %-10s %-10s %-10s %-10s %-12s\n";
         @header = qw( CHROM:POS REF ALT Filter Filter_Commment VAF TotCov RefCov AltCov COSID );
     }
     if ($annots) {
-        $w4 = field_width($data);
-        push(@header, qw{Gene HGVS oncomineGeneClass oncomineVariantClass});
-        $format =~ s/\n$/ %-14s %-${w4}s %-21s %-21s\n/;
+        (undef, undef, undef, $w4) = field_width($data);
+
+        dd \[$w1,$w2,$w3,$w4];
+        #exit;
+
+        # TODO: Add in functional annotation output here.
+        push(@header, qw{Gene HGVS Function oncomineGeneClass oncomineVariantClass});
+        $format =~ s/\n$/ %-14s 4{{%-${w4}s}} %-21s %-21s\n/;
     }
     printf {$out_fh} $format, @header;
 
@@ -628,7 +636,7 @@ sub field_width {
     my $data_ref = shift;
     my $ref_width = 0;
     my $var_width = 0;
-    my $filter_width= 0;
+    my $filter_width = 0;
     my $hgvs_width = 0;
 
     if ( $fuzzy ) {
@@ -637,7 +645,7 @@ sub field_width {
                 my $ref_len = length( $$_[1] );
                 my $alt_len = length( $$_[2] );
                 my $filter_len = length( $$_[4] );
-                my $hgvs_len = length($$_[10]);
+                my $hgvs_len = length($$_[12]);
                 $ref_width = $ref_len if ( $ref_len > $ref_width );
                 $var_width = $alt_len if ( $alt_len > $var_width );
                 $filter_width = $filter_len if ( $filter_len > $filter_width );
@@ -649,7 +657,8 @@ sub field_width {
             my $ref_len = length( $$data_ref{$variant}[1] );
             my $alt_len = length( $$data_ref{$variant}[2] );
             my $filter_len = length( $$data_ref{$variant}[4] );
-            my $hgvs_len = length( $$data_ref{$variant}[10] );
+            my $hgvs_len = length( $$data_ref{$variant}[12] );
+            print "hgvs: $$data_ref{$variant}[12]\n";
             $ref_width = $ref_len if ( $ref_len > $ref_width );
             $var_width = $alt_len if ( $alt_len > $var_width );
             $filter_width = $filter_len if ( $filter_len > $filter_width );
