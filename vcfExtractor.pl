@@ -22,7 +22,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 print colored("*" x 50, 'bold yellow on_black'), "\n";
-print colored("\t\tDEVELOPMENT VERSION", 'bold yellow on_black'), "\n";
+print colored("\tDEVELOPMENT VERSION OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
 print colored("*" x 50, 'bold yellow on_black'), "\n\n";
 
 my $scriptname = basename($0);
@@ -217,11 +217,12 @@ my $inputVCF = shift;
 # Check VCF file and options to make sure they're valid
 open ( my $vcf_fh, "<", $inputVCF );
 my @header = grep { /^#/ } <$vcf_fh>;
-if ( $header[0] !~ /VCFv4/ ) {
-    print "$err '$inputVCF' does not appear to be a valid VCF file or does not have a header.\n\n";
-    print "$usage\n";
-    exit 1;
-}
+die "$err '$inputVCF' does not appear to be a valid VCF file or does not have a header.\n" unless @header;
+#if ( $header[0] !~ /VCFv4/ ) {
+    #print "$err '$inputVCF' does not appear to be a valid VCF file or does not have a header.\n\n";
+    #print "$usage\n";
+    #exit 1;
+#}
 
 # Crude check for TVC3.2 or TVC4.0+ VCF file.  Still need to refine this
 if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
