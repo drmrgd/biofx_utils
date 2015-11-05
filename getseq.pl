@@ -22,7 +22,7 @@ use XML::Twig;
 use Sort::Versions;
 
 my $scriptname = basename($0);
-my $version = "v1.2.0_080515";
+my $version = "v1.3.0_110515";
 my $description = <<"EOT";
 Program to retrieve sequence from the UCSC DAS server.  Enter sequence coordinates in the form of 'chr:start-stop',
 and the output will be sequence from hg19, padded by 10 bp.  Extra padding can be added with the '-p' option.  
@@ -58,7 +58,7 @@ my $name;
 GetOptions( "name|n=s"      => \$name, 
             "padding|p=i"   => \$padding,
             "batch|b=s"     => \$batch_file,
-            "name|n=s"      => \$seq_name,
+            "name|n=s"      => \$name,
             "output|o=s"    => \$outfile,
             "version|v"     => \$ver_info,
             "help|h"        => \$help )
@@ -100,7 +100,7 @@ if ($batch_file) {
 } else {
     my $input_query = shift;
     my $formatted_query = format_query($input_query);
-    $seq_name //= $formatted_query;
+    $name //= $formatted_query;
     $queries{$input_query} = $formatted_query;
 }
 
@@ -127,7 +127,7 @@ for ( sort { versioncmp( $a, $b ) } keys %result ) {
 sub format_query {
     my $input_string = shift;
 
-    my ($chr, $start, $end) = $input_string =~ /^(?:chr)?([XY0-9]{1,2})[^\d+](\d+)[-,.\t ]*(\d+)$/;
+    my ($chr, $start, $end) = $input_string =~ /^(?:chr)?([XY0-9]{1,2})[^\d+](\d+)[-,\.\t ]*(\d+)?$/;
 
     $end = $start unless $end;
     $start -= $padding;
