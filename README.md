@@ -14,10 +14,9 @@ Miscellaneous Bioinformatics Scripts
   some more tweaks when I have time.
 
 * <b>vcfExtractor.pl</b>
-  Script to parse Ion Torrent specific VCF files and pull out variant data.  This works with TS v3.2 and v4.0.2
+  Script to parse Ion Torrent specific VCF files and pull out variant data.  This works with TS v4.2 and v5.0
   files.  Some parts are compatible with Ion Reporter generated VCF files.
 
 * <b>genemed_compare.pl</b>
   Starting with either the XLS or CSV derived from the XLS report, compare GeneMed output from different versions
   of the Torrent Variant Caller (TVC) and output a Venn Diagram and Tables of the results
- 
