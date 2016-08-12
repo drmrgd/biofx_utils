@@ -20,3 +20,8 @@ Miscellaneous Bioinformatics Scripts
 * <b>genemed_compare.pl</b>
   Starting with either the XLS or CSV derived from the XLS report, compare GeneMed output from different versions
   of the Torrent Variant Caller (TVC) and output a Venn Diagram and Tables of the results
+
+* <b>readlength_histogram.pl</b>
+  Read in an Ion Torrent BAM file and generate a readlength histogram plot from the sample.  This script will require
+  the `Statistics::R` perl module, as well as, the `ggplot2` library in R.  You can find [Statistics::R here](http://search.cpan.org/~fangly/Statistics-R/lib/Statistics/R.pm).
+  You can find the  most excellent [ggplot2 package here](http://ggplot2.org).
