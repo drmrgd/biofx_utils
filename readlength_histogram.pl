@@ -18,7 +18,7 @@ use Sort::Versions;
 use Statistics::R;
 
 my $scriptname = basename($0);
-my $version = "v1.0.0_042916";
+my $version = "v2.0.0_090116";
 my $description = <<"EOT";
 Program to read BAM file and create a read length histogram using the Statistics::R module. Can load a 
 FASTQ file directly so that we don't need to convert first.  
@@ -28,7 +28,8 @@ my $usage = <<"EOT";
 USAGE: $scriptname [options] <sequence_file>
     -f, --fastq      Sample is a FASTQ file and no conversion needs to be done.
     -s, --sample     Sample name (DEFAULT: FASTQ filename)
-    -b, --bin        Bin size (DEFAULT: 5)
+    -b, --bin        Bin size (DEFAULT: 10)
+    -z, --zoom       Zoom in on bins by only outputting data for which there are bins.  Default is range from 0-210.
     -o, --output     Output file (DEFAULT: rlh_data.txt)
     -v, --version    Version Information
     -h, --help       Display the help information
@@ -37,13 +38,15 @@ EOT
 my $help;
 my $ver_info;
 my $outfile = "rlh_data.txt";
-my $binwidth = 5;
+my $binwidth = 10;
 my $sample;
 my $fastq_file;
+my $zoom;
 
 GetOptions( "fastq|f"     => \$fastq_file,
             "sample|s=s"  => \$sample,
             "bin|b=i"     => \$binwidth,
+            "zoom|z"      => \$zoom,
             "output|o=s"  => \$outfile,
             "version|v"   => \$ver_info,
             "help|h"      => \$help )
@@ -60,6 +63,7 @@ sub version {
 
 help if $help;
 version if $ver_info;
+
 
 ###------------------------------ END COMMANDLINE ARGS --------------------------###
 my $seqfile = shift;
@@ -96,7 +100,10 @@ while (<$input_fh>) {
 close( $input_fh );
 
 # Call rlh sub and print out results
-my %rlhData = read_length_histogram( \%readlength, $binwidth, $outfile);
+my %rlhData;
+($zoom) 
+    ? (%rlhData = read_length_histogram( \%readlength, $binwidth, $outfile))
+    : (%rlhData = static_bin_histogram(\%readlength, $binwidth, $outfile));
 
 # Draw histo with R
 plot_histogram($sample_name,$total_reads);
@@ -111,6 +118,27 @@ sub file_check {
         die "ERROR: '$$file' does not appear to be a BAM file! Did you forget to add the '-f' option?\n" unless $extension eq 'bam';
     }
     return;
+}
+
+sub static_bin_histogram {
+    my ($rl_data, $binwidth, $outfile) = @_;
+    my @bins = map{ $_."-".($_+$binwidth) } (15..210);
+    my %result = map{ $_ => 0 } @bins;
+
+    while (my ($length, $count) = each %$rl_data) {
+        for my $bin (@bins) {
+            my ($start, $end) = split(/-/, $bin);
+            if ($length > $start && $length < $end) {
+                $result{$bin} += $count;
+            }
+        }
+    }
+    open(my $out_fh, ">", $outfile);
+    print {$out_fh} "Length\tCount\n";
+    for my $lengths( sort{versioncmp( $a, $b )} keys %result) {
+        print {$out_fh} "$lengths\t$result{$lengths}\n";
+    }
+    return %result;
 }
 
 sub read_length_histogram {
