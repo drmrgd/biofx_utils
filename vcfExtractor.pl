@@ -20,7 +20,7 @@ use Data::Dump;
 use File::Basename;
 use Term::ANSIColor;
 
-use constant 'DEBUG' => 1;
+use constant 'DEBUG' => 0;
 print colored("*" x 50, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
 print colored("*" x 50, 'bold yellow on_black'), "\n\n";
@@ -88,7 +88,7 @@ my $nocall;
 my $hsids;
 my $annots;
 my $ovat_filter;
-my $verbose;
+my $verbose = 1;
 my $gene;
 
 # Get a list of filter types that can be passed along later on.
@@ -264,25 +264,6 @@ my $ovat_stat;
 ($ovat_filter) ? ($ovat_stat = "$on!") : ($ovat_stat = "$off.");
 print "$info OVAT filter status: $ovat_stat\n" if $verbose;
 
-
-#####################################
-###            Filters            ###
-#####################################
-=cut
-Have following vars:
-
-@filter_list => 'gene', 'hsid', 'position'
-@query_genes => 'will have a list of genes upon which we want to filter.
-@cosids      => 'will have a list of cosmid IDs upon which we want to filter.
-@coors       => 'will have a lsit of positions upon which we want to filter.
-=> Also can have an ovat filter, which does not have a query list.
-=cut
-
-# Filtering steps:
-#     1. Filter by Gene, HSID, or position
-#     2. Filter by OVAT Annot.
-
-
 # Setting up hash of filters.  Right now, only accept one type as combinations are probably redundant. We might find an 
 # excuse to this later, so, so keep the data struct.  Pass the array to the filter function later.
 my %vcf_filters = (
@@ -290,48 +271,13 @@ my %vcf_filters = (
     'hsid'     => \@cosids,
     'position' => \@coords,
 );
+# XXX
+my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters, $ovat_filter);
+#dd $filtered_vcf_data;
 
-#my @selected_filters = grep { scalar @{$vcf_filters{$_}} > 0 } keys %vcf_filters;
-#if (@selected_filters > 1) {
-    #print "ERROR: Using more than one type of filter is redundant and not accepted at this time. (Filters chosen: ";
-    #print join(',', @selected_filters), " )\n";
-    #exit 1;
-#}
-
-
-#exit;
-
-my $filtered_vcf_data = filter_data2(\%vcf_data, \%vcf_filters);
-dd $filtered_vcf_data;
-__exit__(__LINE__, '<<<<<  stopping point    >>>>  Working on new filter methods.');
-
-if ($ovat_filter) {
-    ovat_filter(\%vcf_data);
-} else {
-    ;;
-    #filter_data2(\%vcf_data, \%filter_control);
-}
-
-# Filter and format extracted data or just format and print it out.
-# XXX: 
-#############################################################
-# To remove this whole section and replace with above code
-if ( @cosids ) {
-    filter_data(\%vcf_data, \@cosids);
-}
-elsif ( @coords ) {
-    filter_data(\%vcf_data, \@coords); 
-} 
-elsif ( $ovat_filter ) {
-    ovat_filter(\%vcf_data);
-}
-elsif (@query_genes) {
-    filter_data(\%vcf_data, \@query_genes);
-}
-else {
-    format_output(\%vcf_data);
-}
-##################################################################################
+# Finally print it all out.
+format_output($filtered_vcf_data, \%vcf_filters);
+__exit__(__LINE__, '<<<<<  stopping point    >>>>  Working on new output.');
 
 sub parse_data {
     # Extract the VCF information and create a hash of the data.  
@@ -578,23 +524,24 @@ sub vaf_calc {
     return $vaf;
 }
 
-sub filter_data2 {
+sub filter_data {
     # Filter extracted VCF data and return a hash of filtered data.
-    my $data = shift;
-    my $filter = shift;
+    my ($data, $filter, $ovat) = @_;
+    #my $data = shift;
+    #my $filter = shift;
     my %filtered_data;
     my @fuzzy_pos;
     my %counter;
 
+    $data = ovat_filter($data) if $ovat;
     my @selected_filters = grep { scalar @{$$filter{$_}} > 0 } keys %$filter;
-    return $data unless  @selected_filters;
+    return $data unless @selected_filters;
 
     if (@selected_filters > 1) {
         print "ERROR: Using more than one type of filter is redundant and not accepted at this time. (Filters chosen: ";
         print join(',', @selected_filters), " )\n";
         exit 1;
     }
-    print "Using filter: $selected_filters[0]\n";
 
     if ( $fuzzy ) {
         my $re = qr/(.*).{$fuzzy}/;
@@ -605,9 +552,8 @@ sub filter_data2 {
             }
         }
     } 
-
-    if ($selected_filters[0] eq 'gene') {
-        print "Running the gene filter...\n";
+    elsif ($selected_filters[0] eq 'gene') {
+        print "$info Running the gene filter...\n" if $verbose;
         for my $variant (keys %$data) {
             if ( grep { $$data{$variant}[11] eq $_ } @{$$filter{$selected_filters[0]}}) {
                 @{$filtered_data{$variant}} = @{$$data{$variant}};
@@ -615,7 +561,7 @@ sub filter_data2 {
         }
     }
     elsif ($selected_filters[0] eq 'hsid') {
-        print "Running the HSID filter...\n";
+        print "$info Running the HSID filter...\n" if $verbose;
         for my $variant (keys %$data) {
             if ( grep { $$data{$variant}[10] eq $_ } @{$$filter{$selected_filters[0]}}) {
                 @{$filtered_data{$variant}} = @{$$data{$variant}};
@@ -623,95 +569,35 @@ sub filter_data2 {
         }
     }
     elsif ($selected_filters[0] eq 'position') {
-        print "Running the Position filter...\n";
+        print "$info Running the Position filter...\n" if $verbose;
         for my $variant (keys %$data) {
             if (grep { $$data{$variant}[0] eq $_ } @{$$filter{$selected_filters[0]}}) {
                 @{$filtered_data{$variant}} = @{$$data{$variant}};
             }
         }
     }
-    dd \%filtered_data;
-    exit;
 
-    my $term;
-    ($hsids) ? ($term = "with Hotspot ID:") : ($term = "at position:");
+    # Run the OVAT filter on the pre-filtered data if we want.
+    return \%filtered_data;
+    #print "got here!\n";
+    #($ovat) ? return ovat_filter(\%filtered_data) : return \%filtered_data;
+    # TODO: Remove me!
+    #dd \%filtered_data;
+    #exit;
 
-    if ( $fuzzy ) {
-        for my $query ( @fuzzy_pos ) {
-            my $string = $query . ( '*' x $fuzzy );
-            printf $out_fh "\n>>> No variant found $term %s <<<\n", $string if ( ! exists $counter{$query} );
-        }
-    } else {
-        for my $query ( @$filter ) {
-            print $out_fh "\n>>> No variant found $term $query <<<\n" if ( ! exists $counter{$query} );
-        } 
-    }
-}
+    #my $term;
+    #($hsids) ? ($term = "with Hotspot ID:") : ($term = "at position:");
 
-sub filter_data {
-    # Filtered out extracted dataset.
-    my $data = shift;
-    my $filter = shift;
-
-    dd $data;
-    __exit__(__LINE__, 'soon to be defunct filter data sub');
-
-    my %filtered_data;
-    my @fuzzy_pos;
-    my %counter;
-
-    if ( $fuzzy ) {
-        my $re = qr/(.*).{$fuzzy}/;
-        @fuzzy_pos = map { /$re/ } @$filter;
-        for my $query ( @fuzzy_pos ) {
-            for ( sort keys %$data ) {
-                next if ( $ovat_filter && $$data{$_}[11] eq '---' );
-                if ( $$data{$_}[0] =~ /$query.{$fuzzy}/ ) {
-                    push( @{$filtered_data{$query}},  [@{$$data{$_}}] );
-                    $counter{$query} = 1;
-                }
-            }
-        }
-    } 
-    else {
-        for my $variant ( keys %$data ) {
-            if ($hsids) {
-                if ( my ($query) = grep { ($_) eq $$data{$variant}[10] } @$filter ) {
-                    @{$filtered_data{$variant}} = @{$$data{$variant}};
-                    $counter{$query} = 1;
-                }
-            } 
-            elsif (@query_genes) {
-                ...
-                
-
-                #next unless grep { $_ eq $gene_name } @query_genes;
-            }
-                else {
-                if ( my ($query) = grep { ($_) eq $$data{$variant}[0] } @$filter ) {
-                    @{$filtered_data{$variant}} = @{$$data{$variant}};
-                    $counter{$query} = 1;
-                }
-            }
-        }
-    }
-
-    # Send results to output report formatter
-    ($ovat_filter) ? ovat_filter(\%filtered_data) : format_output(\%filtered_data);
-
-    my $term;
-    ($hsids) ? ($term = "with Hotspot ID:") : ($term = "at position:");
-
-    if ( $fuzzy ) {
-        for my $query ( @fuzzy_pos ) {
-            my $string = $query . ( '*' x $fuzzy );
-            printf $out_fh "\n>>> No variant found $term %s <<<\n", $string if ( ! exists $counter{$query} );
-        }
-    } else {
-        for my $query ( @$filter ) {
-            print $out_fh "\n>>> No variant found $term $query <<<\n" if ( ! exists $counter{$query} );
-        } 
-    }
+    #if ( $fuzzy ) {
+        #for my $query ( @fuzzy_pos ) {
+            #my $string = $query . ( '*' x $fuzzy );
+            #printf $out_fh "\n>>> No variant found $term %s <<<\n", $string if ( ! exists $counter{$query} );
+        #}
+    #} else {
+        #for my $query ( @$filter ) {
+            #print $out_fh "\n>>> No variant found $term $query <<<\n" if ( ! exists $counter{$query} );
+        #} 
+    #}
 }
 
 sub ovat_filter {
@@ -723,13 +609,18 @@ sub ovat_filter {
             delete $$data{$variant} if $$data{$variant}->[18] eq '---';
         }
     }
-    format_output($data);
-    print {$out_fh} "\n>>> No Oncomine Annotated Variants Found! <<<\n" unless %$data;
+    return $data;
+    # TODO: Remove me!
+    #format_output($data);
+    #print {$out_fh} "\n>>> No Oncomine Annotated Variants Found! <<<\n" unless %$data;
 }
 
 sub format_output {
     # Format and print out the results
+    # XXX
     my $data = shift;
+    #dd $data;
+    exit;
     # w1 => REF, w2 => ALT, w3 => Filter comment, w4 => HGVS
     my ($w1, $w2, $w3, $w4) ;
     # Set up the output header
