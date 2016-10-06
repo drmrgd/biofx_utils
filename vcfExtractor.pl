@@ -22,7 +22,7 @@ use constant 'DEBUG' => 0;
 #print colored("*" x 50, 'bold yellow on_black'), "\n\n";
 
 my $scriptname = basename($0);
-my $version = "v6.0.0_090716";
+my $version = "v6.0.1_100616";
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
 following format:
@@ -322,13 +322,14 @@ sub parse_data {
 
             my @array_pos = grep { $omapalt_array[$_] eq $alt_var } 0..$#omapalt_array;
             for my $index ( @array_pos ) {
-                (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$opos_array[$index]/; 
+                #(my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$opos_array[$index]/; 
+                (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$norm_data{'normalizedPos'}/; 
                 
                 # Stupid bug with de novo and hotspot merge that can create two duplicate entries for the same
                 # variant but one with and one without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
-                #my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index] );
-                my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter );
+                #my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter );
+                my $var_id = join( ":", $norm_data{'normalizedPos'}, $oref_array[$index], $oalt_array[$index], $filter );
                 my $cosid = $oid_array[$index];
                 if ( $cosid ne '.' && exists $parsed_data{$var_id} ) {
                    delete $parsed_data{$var_id}; 
@@ -461,9 +462,7 @@ sub get_ovat_annot {
 sub normalize_variant {
     # Borrowed from ThermoFisher's vcf.py script to convert IR VCFs. Trim from both ends until only unique
     # sequence left
-    my $ref = shift;
-    my $alt = shift;
-    my $pos = shift;
+    my ($ref,$alt,$pos) = @_;
     my ($norm_ref, $norm_alt);
 
     my ($rev_ref, $rev_alt, $position_delta) = rev_and_trim($ref, $alt);
