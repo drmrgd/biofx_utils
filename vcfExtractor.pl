@@ -22,7 +22,7 @@ use constant 'DEBUG' => 0;
 #print colored("*" x 50, 'bold yellow on_black'), "\n\n";
 
 my $scriptname = basename($0);
-my $version = "v6.0.1_100616";
+my $version = "v6.0.2_102016";
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
 following format:
@@ -328,8 +328,11 @@ sub parse_data {
                 # Stupid bug with de novo and hotspot merge that can create two duplicate entries for the same
                 # variant but one with and one without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
+                # TODO: Clean this bit up.
                 #my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter );
-                my $var_id = join( ":", $norm_data{'normalizedPos'}, $oref_array[$index], $oalt_array[$index], $filter );
+                #my $var_id = join( ":", $norm_data{'normalizedPos'}, $oref_array[$index], $oalt_array[$index], $filter );
+                #my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter );
+                my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index]);
                 my $cosid = $oid_array[$index];
                 if ( $cosid ne '.' && exists $parsed_data{$var_id} ) {
                    delete $parsed_data{$var_id}; 
@@ -474,10 +477,9 @@ sub normalize_variant {
 
 sub rev_and_trim {
     # Borrowed from ThermoFisher's vcf.py script to convert IR VCFs
-    my $ref = shift;
-    my $alt = shift;
-
+    my ($ref, $alt) = @_;
     my $position_delta = 0;
+
     my @rev_ref = split(//, reverse($$ref));
     my @rev_alt = split(//, reverse($$alt));
 
@@ -491,11 +493,7 @@ sub rev_and_trim {
 
 sub vaf_calc {
     # Determine the VAF
-    my $filter = shift;
-    my $tcov = shift;
-    my $rcov = shift;
-    my $acov = shift;
-
+    my ($filter, $tcov, $rcov, $acov) = @_;
     my $vaf;
 
     if ( $$filter eq "NOCALL" ) { 
@@ -573,8 +571,6 @@ sub filter_data {
             }
         }
     }
-
-    # Return a hash ref of whatever's left.
     return \%filtered_data;
 }
 
