@@ -22,7 +22,7 @@ use constant 'DEBUG' => 0;
 #print colored("*" x 50, 'bold yellow on_black'), "\n\n";
 
 my $scriptname = basename($0);
-my $version = "v6.0.2_102016";
+my $version = "v6.1.0_011017";
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
 following format:
@@ -280,7 +280,7 @@ sub parse_data {
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
         # DEBUG: Can add position to filter and output a hash of data to help.
-        #next unless $pos eq 'chr9:139391437';
+        #next unless $pos eq 'chr3:41268766';
         #my @tmp_data = ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp );
         #my @fields = qw(pos ref alt filter reason oid opos oref oalt omapalt func gtr af fro ro fao ao dp);
         #my %foo;
@@ -328,10 +328,6 @@ sub parse_data {
                 # Stupid bug with de novo and hotspot merge that can create two duplicate entries for the same
                 # variant but one with and one without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
-                # TODO: Clean this bit up.
-                #my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter );
-                #my $var_id = join( ":", $norm_data{'normalizedPos'}, $oref_array[$index], $oalt_array[$index], $filter );
-                #my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index], $filter );
                 my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index]);
                 my $cosid = $oid_array[$index];
                 if ( $cosid ne '.' && exists $parsed_data{$var_id} ) {
@@ -387,30 +383,12 @@ sub parse_data {
 sub get_ovat_annot {
     # If this is IR VCF, add in the OVAT annotation. 
     no warnings;
-    my $func = shift; 
-    my $norm_data = shift; 
+    my ($func, $norm_data) = @_;
+    my %data;
+    my @wanted_elems = qw(oncomineGeneClass oncomineVariantClass gene transcript protein coding function normalizedRef normalizedAlt location exon);
+
     $$func =~ tr/'/"/;
-
-    my %data = (
-        oncomineGeneClass     => '---',
-        oncomineVariantClass  => '---',
-        gene                  => '---',
-        transcript            => '---',
-        protein               => '---',
-        coding                => '---',
-        function              => '---',
-        normalizedRef         => '---',
-        normalizedAlt         => '---',
-        location              => '---',
-        exon                  => '---',
-    );
-
     my $json_annot = JSON::XS->new->decode($$func);
-
-    # Create some default mappings since only 1 block per entry (unless MNP) and gene, location, etc is the same.
-    $data{'transcript'} = $$json_annot[0]->{'transcript'};
-    $data{'gene'}       = $$json_annot[0]->{'gene'};
-    $data{'location'}   = $$json_annot[0]->{'location'};
 
     my $match;
     for my $func_block ( @$json_annot ) {
@@ -422,6 +400,9 @@ sub get_ovat_annot {
                 last;
             } 
         } 
+        else {
+            @data{@wanted_elems} = @{$func_block}{@wanted_elems};
+        }
     }
 
     my $gene_class    = $data{'oncomineGeneClass'}    // '---';
