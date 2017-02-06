@@ -114,10 +114,10 @@ if __name__=='__main__':
     else: 
         vlist = args.clinvar_id.split(',')
 
-    out_fh = gen_output_handle(args.output)
-    print('\t'.join(['chr','start','stop','ref','alt','gene','transcript','cds','aa','functional','clinvar_id','clinical_significance']), file=out_fh)
-
     delims = { 'tab' : '\t', 'comma' : ',' } 
+    out_fh = gen_output_handle(args.output)
+    print(delims[args.delimiter].join(['chr','start','stop','ref','alt','gene','transcript','cds','aa','functional','clinvar_id','clinical_significance']), file=out_fh)
+
     for var in vlist:
         clinvar_json = get_clinvar_data(var)
         parse_json(clinvar_json,var,out_fh,delims[args.delimiter])
