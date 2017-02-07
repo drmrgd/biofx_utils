@@ -9,7 +9,7 @@ import re
 import argparse
 from pprint import pprint as pp
 
-version = '1.5.0_020717'
+version = '1.5.1_020717'
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -95,7 +95,7 @@ def parse_json(json,varid,outfile,delimiter):
     results = []
     regex = '(NM.*?)\((.*?)\):(c\..*?)(?: \((.*?)\))?$'
 
-    dbsnp_id = get_var_ids(var_data['variation_xrefs'],'dbSNP')
+    dbsnp_id = 'rs' + get_var_ids(var_data['variation_xrefs'],'dbSNP')
 
     for entry in var_data['variation_loc']:
         if entry['assembly_name'] == 'GRCh37':
