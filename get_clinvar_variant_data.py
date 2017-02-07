@@ -9,7 +9,7 @@ import re
 import argparse
 from pprint import pprint as pp
 
-version = '1.4.0_102116'
+version = '1.5.0_020717'
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -28,12 +28,13 @@ def get_args():
     args = parser.parse_args()
 
     if not args.clinvar_id and not args.batch:
-        sys.stderr.write("ERROR: You must either enter a single ClinVar ID to search or a batchfile of IDs")
+        sys.stderr.write("ERROR: You must either enter a single ClinVar ID to search or a batchfile of IDs.\n")
         sys.stderr.write("USAGE: {} -b <{}> | <{}>\n".format(sys.argv[0],'clinvar_id_list.file', 'clinvar_id')) 
         sys.exit(1)
+
     if args.delimiter not in ('comma','tab'):
-        sys.stderr.write('ERROR: You must choose either "tab" or "comma" when using this option.')
-        sys.exit=(1)
+        sys.stderr.write('ERROR: You must choose either "tab" or "comma" when using the delmiter option.\n')
+        sys.exit(1)
 
     return args
                 
@@ -70,6 +71,17 @@ def get_function(aa):
         #print('does not match {}'.format(aa))
         return 'missense'
 
+def get_var_ids(refs,wanted_id):
+    ref_list = {elem['db_source'] : elem['db_id'] for elem in refs}
+    return ref_list[wanted_id]
+
+def gen_output_handle(arg):
+    if arg:
+        print("Writing output to {}".format(arg))
+        return open(arg,'w')
+    else:
+        return sys.stdout
+
 def parse_json(json,varid,outfile,delimiter):
     '''Parse the JSON file and output only the info we need'''
     try:
@@ -79,8 +91,11 @@ def parse_json(json,varid,outfile,delimiter):
         return
 
     significance = json['result'][varid]['clinical_significance']['description']
+    review_status= json['result'][varid]['clinical_significance']['review_status']
     results = []
     regex = '(NM.*?)\((.*?)\):(c\..*?)(?: \((.*?)\))?$'
+
+    dbsnp_id = get_var_ids(var_data['variation_xrefs'],'dbSNP')
 
     for entry in var_data['variation_loc']:
         if entry['assembly_name'] == 'GRCh37':
@@ -95,17 +110,10 @@ def parse_json(json,varid,outfile,delimiter):
                 aa = '---'
             function = get_function(aa)
 
-            results = results + [gene,transcript,cds,aa,function,varid,significance]
+            # results = results + [gene,transcript,cds,aa,function,varid,significance]
+            results = results + [gene,transcript,cds,aa,function,varid,dbsnp_id,significance,review_status]
             results = list(map(lambda x: x if x else '---', results))
-    # print('\t'.join(results), file=outfile)
     print(delimiter.join(results), file=outfile)
-
-def gen_output_handle(arg):
-    if arg:
-        print("Writing output to {}".format(arg))
-        return open(arg,'w')
-    else:
-        return sys.stdout
 
 if __name__=='__main__':
     args = get_args()
@@ -116,7 +124,7 @@ if __name__=='__main__':
 
     delims = { 'tab' : '\t', 'comma' : ',' } 
     out_fh = gen_output_handle(args.output)
-    print(delims[args.delimiter].join(['chr','start','stop','ref','alt','gene','transcript','cds','aa','functional','clinvar_id','clinical_significance']), file=out_fh)
+    print(delims[args.delimiter].join(['chr','start','stop','ref','alt','gene','transcript','cds','aa','functional','clinvar_id','dbsnp_id','clinical_significance','review_status']), file=out_fh)
 
     for var in vlist:
         clinvar_json = get_clinvar_data(var)
