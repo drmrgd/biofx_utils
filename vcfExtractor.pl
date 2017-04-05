@@ -17,12 +17,13 @@ use File::Basename;
 use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
-#print colored("*" x 50, 'bold yellow on_black'), "\n";
-#print colored("\tDEVELOPMENT VERSION OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
-#print colored("*" x 50, 'bold yellow on_black'), "\n\n";
-
 my $scriptname = basename($0);
-my $version = "v6.1.0_011017";
+my $version = "v6.3.0_040517-dev";
+
+print colored("*" x 50, 'bold yellow on_black'), "\n";
+print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
+print colored("*" x 50, 'bold yellow on_black'), "\n\n";
+
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
 following format:
@@ -246,10 +247,13 @@ if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
     die "Pre TVCv4.0 VCF file detected.  These files are not longer supported by this utility\n";
 }
 
-# Trigger OVAT annot capture if available
-my $ovat_annot;
+# Trigger IR / OVAT annot capture if available
+# XXX
+my ($ir_annot,$ovat_annot);
 ( grep { /OncomineVariantAnnotation/ } @header ) ? ($ovat_annot = 1) : ($ovat_annot = 0);
-die "$err OVAT output selected, but no OVAT annotations found in VCF file!\n" if ( $annots && $ovat_annot == 0 ); 
+#die "$err OVAT output selected, but no OVAT annotations found in VCF file!\n" if ( $annots && $ovat_annot == 0 ); 
+( grep { /IonReporterExportVersion/ } @header ) ? ($ir_annot = 1) : ($ir_annot = 0);
+die "$err IR output selected, but VCF does not appear to have been run through IR!\n" if ( $annots && $ir_annot == 0 ); 
 close $vcf_fh;
 
 # Get the data from VCF Tools
@@ -280,7 +284,7 @@ sub parse_data {
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
         # DEBUG: Can add position to filter and output a hash of data to help.
-        #next unless $pos eq 'chr3:41268766';
+        #next unless $pos eq 'chr1:120463044';
         #my @tmp_data = ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp );
         #my @fields = qw(pos ref alt filter reason oid opos oref oalt omapalt func gtr af fro ro fao ao dp);
         #my %foo;
@@ -335,12 +339,14 @@ sub parse_data {
                 }
 
                 # Grab the OVAT annotation information from the FUNC block if possible.
+                # XXX
                 my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon);
                 if ( $func eq '.' ) {
                     push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $annots;
                     $ovat_vc = $ovat_gc = $gene_name = "NULL";
                 } else {
-                    ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon) = get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
+                    ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, 
+                        $exon) = get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
                 }
 
                 # Start the var string.
@@ -373,7 +379,12 @@ sub parse_data {
                         }
                     }
                 }
-                push( @{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function, $ovat_gc, $ovat_vc ) if $annots;
+                # XXX
+                #push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function, 
+                        #$ovat_gc, $ovat_vc) if $annots;
+                # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
+                push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
+                push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $ovat_annot;
             }
         }
     }
@@ -594,9 +605,16 @@ sub format_output {
         @header = qw( CHROM:POS REF ALT Filter Filter_Commment VAF TotCov RefCov AltCov COSID );
     }
     if ($annots) {
+        # XXX
         $w4 = field_width($data);
-        push(@header, qw{Gene Transcript HGVS Protein Location Function oncomineGeneClass oncomineVariantClass});
-        $format =~ s/\n$/ %-14s %-15s %-${w4}s %-20s %-12s %-20s %-21s %-21s\n/;
+        #push(@header, qw{Gene Transcript HGVS Protein Location Function oncomineGeneClass oncomineVariantClass});
+        #$format =~ s/\n$/ %-14s %-15s %-${w4}s %-20s %-12s %-20s %-21s %-21s\n/;
+        push(@header, qw{Gene Transcript HGVS Protein Location Function});
+        $format =~ s/\n$/ %-14s %-15s %-${w4}s %-20s %-12s %-20s\n/;
+    }
+    if ($ovat_annot) {
+        push(@header,qw(oncomineGeneClass oncomineVariantClass));
+        $format =~ s/\n$/ %-21s %-21s \n/;
     }
     printf $format, @header;
 
@@ -626,6 +644,11 @@ sub format_output {
     } else {
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
             ($nocall) ? (@output_data = @{$$data{$variant}}[0,1,2,6..18]) : (@output_data = @{$$data{$variant}}[0..4,6..18]);
+            # TODO
+            # Due to issue with regions BED, can have some areas that don't have func blocks since they don't map to any genes (generally the 'sid' amps). 
+            # Give some kind of dummy field to these data to avoid output warnings until the BED file is fixed.
+            #print "ERR: $variant\n" and exit unless $output_data[9];
+            @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
             printf {$out_fh} $format, @output_data;
         }
     }
