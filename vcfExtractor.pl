@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v6.3.0_040517-dev";
+my $version = "v6.4.0_040617-dev";
 
 print colored("*" x 50, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -131,7 +131,7 @@ my @warnings;
 
 # Check for vcftools; we can't run without it...for now.
 if ( ! qx(which vcftools) ) {
-    print "$err Required package vcftools is not installed on this system.  Install vcftools ('vcftools.sourceforge.net') and try again.\n";
+    print "$err Required package 'vcftools' is not installed on this system.  Install vcftools ('vcftools.sourceforge.net') and try again.\n";
     exit 1;
 }
 
@@ -169,7 +169,7 @@ if ( scalar( @ARGV ) < 1 ) {
 }
 
 # Parse the lookup file and add variants to the postions list if processing batch-wise
-my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH );
+my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM CV );
 if ($lookup) {
     my $query_list = batch_lookup(\$lookup);
     if ( grep { $$query_list =~ /$_\d+/ } @valid_hs_ids ) {
@@ -179,7 +179,7 @@ if ($lookup) {
         $positions = $$query_list;
     }
     else {
-        print "$err Issue with lookup file.  Check and retry\n"; 
+        print "$err Issue with lookup file. Check and retry\n"; 
         exit 1;
     }
 }
@@ -224,6 +224,7 @@ my %vcf_filters = (
     'hsid'     => \@cosids,
     'position' => \@coords,
 );
+print "Applied filters: \n" and dd \%vcf_filters if DEBUG or $verbose;
 
 # Write output to either indicated file or STDOUT
 my $out_fh;
@@ -248,10 +249,8 @@ if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
 }
 
 # Trigger IR / OVAT annot capture if available
-# XXX
 my ($ir_annot,$ovat_annot);
 ( grep { /OncomineVariantAnnotation/ } @header ) ? ($ovat_annot = 1) : ($ovat_annot = 0);
-#die "$err OVAT output selected, but no OVAT annotations found in VCF file!\n" if ( $annots && $ovat_annot == 0 ); 
 ( grep { /IonReporterExportVersion/ } @header ) ? ($ir_annot = 1) : ($ir_annot = 0);
 die "$err IR output selected, but VCF does not appear to have been run through IR!\n" if ( $annots && $ir_annot == 0 ); 
 close $vcf_fh;
@@ -271,9 +270,16 @@ my %vcf_data = parse_data( \@extracted_data );
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
+$filtered_vcf_data = flatten_fuzzy_results($filtered_vcf_data) if $fuzzy; # if fuzzy results, make them look like regular
 
 # Finally print it all out.
 format_output($filtered_vcf_data, \%vcf_filters);
+
+# Wrap up
+if ( @warnings && $verbose ) {
+    print "\n";
+    print $_ for @warnings;
+}
 
 sub parse_data {
     # Extract the VCF information and create a hash of the data.  
@@ -339,7 +345,6 @@ sub parse_data {
                 }
 
                 # Grab the OVAT annotation information from the FUNC block if possible.
-                # XXX
                 my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon);
                 if ( $func eq '.' ) {
                     push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $annots;
@@ -358,8 +363,8 @@ sub parse_data {
                     $reason, 
                     $gtr );
 
-                my ($vaf, $tot_coverage);
                 # Check to see if call is result of long indel assembler and handle appropriately. 
+                my ($vaf,$tot_coverage);
                 if ( $fao_array[$alt_index] eq '.' ) {
                     $tot_coverage = $ao_array[$alt_index] + $ro;
                     $vaf = vaf_calc( \$filter, \$dp, \$ro, \$ao_array[$alt_index] );
@@ -379,12 +384,9 @@ sub parse_data {
                         }
                     }
                 }
-                # XXX
-                #push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function, 
-                        #$ovat_gc, $ovat_vc) if $annots;
                 # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
                 push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
-                push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $ovat_annot;
+                push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
             }
         }
     }
@@ -511,13 +513,14 @@ sub filter_data {
     if ($verbose) {
         print "$info OVAT filter status: ";
         ($ovat_filter) ? print "$on!\n" : print "$off.\n";
-    }
-    $data = ovat_filter($data) if $ovat_filter;
-
-    if ($verbose) {
         print "$info Hotspot ID filter status: ";
         ($hotspots) ? print "$on!\n" : print "$off.\n";
+        print "$info NOCALLs output to results: ";
+        ($nocall) ? print "$off!\n" : print "$on.\n";
+        print "$info Reference calls output to results: ";
+        ($noref) ? print "$off!\n" : print "$on.\n";
     }
+    $data = ovat_filter($data) if $ovat_filter;
     $data = hs_filtered($data) if $hotspots;
 
     # Determine filter to run, and if none, just return the full set of data.
@@ -586,36 +589,55 @@ sub hs_filtered {
     return $data;
 }
 
+sub flatten_fuzzy_results {
+    # Make the fuzzy results look more like non-fuzzy match results to make reporting easier.
+    my $data = shift;
+    my %results;
+    for my $fuzzy_position (keys %$data) {
+        my $counter = 0;
+        for my $var (@{$$data{$fuzzy_position}}) {
+            $counter++;
+            $results{"$fuzzy_position:$counter"} = $var;
+        }
+    }
+    return \%results;
+}
+
+
 sub format_output {
     # Format and print out the results
-    # w1 => REF, w2 => ALT, w3 => Filter comment, w4 => HGVS
+    # w1 => REF(index:1), w2 => ALT(index:2), w3 => Filter comment(index:4), w4 => CDS(index:13), w5 => AA(index:14)
     my ($data,$filter_list) = @_;
-    my ($w1, $w2, $w3, $w4);
+    my $ref_width = 8;
+    my $alt_width = 8;
+    my $filter_width = 17;
+    my $cds_width = 7;
+    my $aa_width = 7;
+
     select $out_fh;
 
-    # Set up the output header
+    # Set up the output header and the correct format string to use.
     my ($format, @header);
     if ($nocall) {
-        ($w1, $w2) = field_width($data);
-        $format = "%-17s %-${w1}s %-${w2}s %-8s %-8s %-8s %-8s %-12s\n";
+        ($ref_width, $alt_width) = field_width($data,[1,2]) if %$data;
+        $format = "%-17s %-${ref_width}s %-${alt_width}s %-8s %-8s %-8s %-8s %-12s\n";
         @header = qw( CHROM:POS REF ALT VAF TotCov RefCov AltCov COSID );
     } else {
-        ($w1, $w2, $w3) = field_width($data);
-        $format = "%-17s %-${w1}s %-${w2}s %-8s %-${w3}s %-8s %-8s %-8s %-10s %-12s\n";
-        @header = qw( CHROM:POS REF ALT Filter Filter_Commment VAF TotCov RefCov AltCov COSID );
+        ($ref_width,$alt_width,$filter_width) = field_width($data,[1,2,4]) if %$data;
+        $filter_width = 17 if $filter_width < 17;
+        $format = "%-17s %-${ref_width}s %-${alt_width}s %-8s %-${filter_width}s %-8s %-8s %-8s %-10s %-12s\n";
+        @header = qw( CHROM:POS REF ALT Filter Filter_Reason VAF TotCov RefCov AltCov COSID );
     }
     if ($annots) {
-        # XXX
-        $w4 = field_width($data);
-        #push(@header, qw{Gene Transcript HGVS Protein Location Function oncomineGeneClass oncomineVariantClass});
-        #$format =~ s/\n$/ %-14s %-15s %-${w4}s %-20s %-12s %-20s %-21s %-21s\n/;
-        push(@header, qw{Gene Transcript HGVS Protein Location Function});
-        $format =~ s/\n$/ %-14s %-15s %-${w4}s %-20s %-12s %-20s\n/;
+        ($cds_width,$aa_width) = field_width($data,[13,14]) if %$data;
+        push(@header, qw(Gene Transcript CDS AA Location Function));
+        $format =~ s/\n$/ %-14s %-15s %-${cds_width}s %-${aa_width}s %-12s %-22s\n/;
+        if ($ovat_annot) {
+            push(@header,qw(oncomineGeneClass oncomineVariantClass));
+            $format =~ s/\n$/ %-21s %-21s \n/;
+        }
     }
-    if ($ovat_annot) {
-        push(@header,qw(oncomineGeneClass oncomineVariantClass));
-        $format =~ s/\n$/ %-21s %-21s \n/;
-    }
+    
     printf $format, @header;
 
     # Handle null result reporting depending on the filter used.
@@ -630,77 +652,34 @@ sub format_output {
             }
             print "\n>>> No variant found at position(s): ", join(', ', @positions), "! <<<\n" and exit;
         } 
-    }
-    
-    my @output_data;
-    if ( $fuzzy ) {
-        for my $variant ( sort { versioncmp( $a, $b ) }  keys %$data ) {
-            for my $common_var ( @{$$data{$variant}} ) {
-                my $location = $$common_var[15];
-                ($nocall) ? (@output_data = @$common_var[0,1,2,6..18]) : (@output_data = @$common_var[0..4,6..18]);
-                printf $out_fh $format, @output_data;
-            }
-        }
     } else {
+        my @output_data;
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
             ($nocall) ? (@output_data = @{$$data{$variant}}[0,1,2,6..18]) : (@output_data = @{$$data{$variant}}[0..4,6..18]);
-            # TODO
-            # Due to issue with regions BED, can have some areas that don't have func blocks since they don't map to any genes (generally the 'sid' amps). 
-            # Give some kind of dummy field to these data to avoid output warnings until the BED file is fixed.
-            #print "ERR: $variant\n" and exit unless $output_data[9];
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
-            printf {$out_fh} $format, @output_data;
+            printf $format, @output_data;
         }
     }
-
-    # Wrap up
-    if ( @warnings && $verbose ) {
-        print "\n";
-        print $_ for @warnings;
-    }
+    
 }
 
 sub field_width {
-    # Get the longest field width for formatting later.
-    my $data_ref = shift;
-    my $ref_width = 0;
-    my $var_width = 0;
-    my $filter_width = 0;
-    my $hgvs_width = 0;
-
-    if ( $fuzzy ) {
-        for my $variant ( keys %$data_ref ) {
-            for ( @{$$data_ref{$variant}} ) {
-                my $ref_len = length( $$_[1] );
-                my $alt_len = length( $$_[2] );
-                my $filter_len = length( $$_[4] );
-                $ref_width = $ref_len if ( $ref_len > $ref_width );
-                $var_width = $alt_len if ( $alt_len > $var_width );
-                $filter_width = $filter_len if ( $filter_len > $filter_width );
-
-                if ($$_[13]) {
-                    my $hgvs_len = length($$_[13]);
-                    $hgvs_width = $hgvs_len if ( $hgvs_len > $hgvs_width );
-                }
-            }
-        }
-    } else {
-        for my $variant ( keys %$data_ref ) {
-            my $ref_len = length( $$data_ref{$variant}[1] );
-            my $alt_len = length( $$data_ref{$variant}[2] );
-            my $filter_len = length( $$data_ref{$variant}[4] );
-            $ref_width = $ref_len if ( $ref_len > $ref_width );
-            $var_width = $alt_len if ( $alt_len > $var_width );
-            $filter_width = $filter_len if ( $filter_len > $filter_width );
-            if ($$data_ref{$variant}[13]) {
-                my $hgvs_len = length( $$data_ref{$variant}[13] );
-                $hgvs_width = $hgvs_len if ( $hgvs_len > $hgvs_width );
-            }
-        }
+    # Load in a hash of data and an array of indices for which we want field width info, and
+    # output an array of field widths to use in the format string.
+    my ($data,$indices) = @_;
+    my @return_widths;
+    for my $pos (@$indices) {
+        my @elems = map { ${$$data{$_}}[$pos] } keys %$data;
+        push(@return_widths, get_longest(\@elems)+2);
     }
+    return @return_widths;
+}
 
-    ( $filter_width > 13 ) ? ($filter_width += 4) : ($filter_width = 17);
-    return ( $ref_width + 2, $var_width + 2, $filter_width, $hgvs_width + 2);
+sub get_longest {
+    my $array = shift;
+    my @lens = map { length($_) } @$array;
+    my @sorted_lens = sort { versioncmp( $b, $a) } @lens;
+    return $sorted_lens[0];
 }
 
 sub batch_lookup {
@@ -719,7 +698,7 @@ sub batch_lookup {
 sub __exit__ {
     my ($line, $msg) = @_;
     print "\n\n";
-    print colored("Got exit message at line: $line with message:\n$msg", 'bold white on_green');
+    print colored("Got exit message at line $line with message: $msg", 'bold white on_green');
     print "\n";
     exit;
 }
