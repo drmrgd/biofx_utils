@@ -18,11 +18,11 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v6.4.0_040617-dev";
+my $version = "v6.5.0_051617";
 
-print colored("*" x 50, 'bold yellow on_black'), "\n";
-print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
-print colored("*" x 50, 'bold yellow on_black'), "\n\n";
+#print colored("*" x 50, 'bold yellow on_black'), "\n";
+#print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
+#print colored("*" x 50, 'bold yellow on_black'), "\n\n";
 
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
@@ -169,7 +169,7 @@ if ( scalar( @ARGV ) < 1 ) {
 }
 
 # Parse the lookup file and add variants to the postions list if processing batch-wise
-my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM CV );
+my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV );
 if ($lookup) {
     my $query_list = batch_lookup(\$lookup);
     if ( grep { $$query_list =~ /$_\d+/ } @valid_hs_ids ) {
@@ -261,12 +261,15 @@ if ($annots) {
     $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t%INFO/FUNC\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
 } else {
     $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
+    #$vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/GENE\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
 }
 
 my @extracted_data = qx/ vcf-query $inputVCF -f $vcfFormat /;
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
+#dd \%vcf_data;
+#exit;
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
