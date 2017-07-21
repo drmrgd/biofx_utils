@@ -16,13 +16,13 @@ use Data::Dump;
 use File::Basename;
 use Term::ANSIColor;
 
-use constant 'DEBUG' => 0;
+use constant 'DEBUG' => 1;
 my $scriptname = basename($0);
-my $version = "v6.5.0_051617";
+my $version = "v6.6.072117dev1";
 
-#print colored("*" x 50, 'bold yellow on_black'), "\n";
-#print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
-#print colored("*" x 50, 'bold yellow on_black'), "\n\n";
+print colored("*" x 80, 'bold yellow on_black'), "\n";
+print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
+print colored("*" x 80, 'bold yellow on_black'), "\n\n";
 
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
@@ -55,58 +55,79 @@ my $usage = <<"EOT";
 USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
 
     Program Options
-    -a, --annot     Add IR and Oncomine OVAT annotation information to output if available.
-    -V, --Verbose   Print additional information during processing.
-    -o, --output    Send output to custom file.  Default is STDOUT.
-    -v, --version   Version information
-    -h, --help      Print this help information
+    -a, --annot       Add IR and Oncomine OVAT annotation information to output if available.
+    -s, --snpeff      Add SnpEff annotations if available.
+    -V, --Verbose     Print additional information during processing.
+    -o, --output      Send output to custom file.  Default is STDOUT.
+    -v, --version     Version information
+    -h, --help        Print this help   information
 
     Filter and Output Options
-    -p, --pos       Output only variants at this position.  Format is "chr<x>:######" 
-    -c, --cosid     Look for variant with matching COSMIC ID (or other Hotspot ID)
-    -g, --gene      Filter variant calls by gene id. Can input a single value or comma separated list of gene
-                    ids to query. Can only be used with the '--annot' option as the 
-                    annotations have to come from IR.
-    -l, --lookup    Read a list of variants from a file to query the VCF. 
-    -f, --fuzzy     Less precise (fuzzy) position match. Strip off n digits from the position string.
-                    MUST be used with a query option (e.g. -p, -c, -l), and can not trim more than 3 
-                    digits from string.
-    -n, --noref     Output reference calls.  Ref calls filtered out by default
-    -N, --NOCALL    Remove 'NOCALL' entries from output
-    -O, --OVAT      Only report Oncomine Annotated Variants.
-    -H, --HS        Print out only variants that have a Hotspot ID (NOT YET IMPLEMENTED).
+    -p, --positions    Output only variants at this position.  Format is "chr<x>:######" 
+    -c, --cosid        Look for variant with matching COSMIC ID (or other Hotspot ID)
+    -g, --gene         Filter variant calls by gene id. Can input a single value or comma separated list of gene
+                       ids to query. Can only be used with the '--annot' option as the 
+                       annotations have to come from IR.
+    -l, --lookup       Read a list of variants from a file to query the VCF. 
+    -f, --fuzzy        Less precise (fuzzy) position match. Strip off n digits from the position string.
+                       MUST be used with a query option (e.g. -p, -c, -l), and can not trim more than 3 
+                       digits from string.
+    -n, --noref        Output reference calls.  Ref calls filtered out by default
+    -N, --NOCALL       Remove 'NOCALL' entries from output
+    -O, --OVAT         Only report Oncomine Annotated Variants.
+    -H, --HS           Print out only variants that have a Hotspot ID (NOT YET IMPLEMENTED).
 EOT
 
 my $help;
 my $ver_info;
-my $outfile;
-my $positions;
-my $lookup;
-my $fuzzy;
-my $noref;
-my $nocall;
-my $hsids;
-my $annots;
-my $ovat_filter;
-my $verbose;
-my $gene;
-my $hotspots;
+#my $outfile;
+#my $positions;
+#my $lookup;
+#my $fuzzy;
+#my $noref;
+#my $nocall;
+#my $hsids;
+#my $annots;
+#my $ovat_filter;
+#my $verbose;
+#my $gene;
+#my $hotspots;
+#my $snpeff;
 
-GetOptions( "output|o=s"    => \$outfile,
-            "annot|a"       => \$annots,
-            "OVAT|O"        => \$ovat_filter,
-            "cosid|c=s"     => \$hsids,
-            "NOCALL|N"      => \$nocall,
-            "pos|p=s"       => \$positions,
-            "lookup|l=s"    => \$lookup,
-            "fuzzy|f=i"     => \$fuzzy,
-            "noref|n"       => \$noref,
-            "gene|g=s"      => \$gene,
-            "version|v"     => \$ver_info,
-            "Verbose|V"     => \$verbose,
-            "HS|H"          => \$hotspots,
-            "help|h"        => \$help )
-        or die "\n$usage";
+my %opts;
+GetOptions( \%opts, 
+    "output|o=s",
+    "annot|a",
+    "snpeff|s",
+    "OVAT|O",
+    "cosid|c=s",
+    "NOCALL|N",
+    "positions|p=s",
+    "lookup|l=s",
+    "fuzzy|f=i",
+    "noref|n", 
+    "gene|g=s",
+    "Verbose|V",
+    "HS|H",
+    "version|v"  => \$ver_info,
+    "help|h"     => \$help,  
+) or die "\n$usage";
+#GetOptions( "output|o=s"    => \$outfile,
+            #"annot|a"       => \$annots,
+            #"snpeff|s"      => \$snpeff,
+            #"OVAT|O"        => \$ovat_filter,
+            #"cosid|c=s"     => \$hsids,
+            #"NOCALL|N"      => \$nocall,
+            #"pos|p=s"       => \$positions,
+            #"lookup|l=s"    => \$lookup,
+            #"fuzzy|f=i"     => \$fuzzy,
+            #"noref|n"       => \$noref,
+            #"gene|g=s"      => \$gene,
+            #"version|v"     => \$ver_info,
+            #"Verbose|V"     => \$verbose,
+            #"HS|H"          => \$hotspots,
+            #"help|h"        => \$help )
+        #or die "\n$usage";
 
 sub help {
 	printf "%s - %s\n\n%s\n\n%s\n", $scriptname, $version, $description, $usage;
@@ -120,6 +141,13 @@ sub version {
 
 help if $help;
 version if $ver_info;
+
+if (DEBUG or $opts{'Verbose'}) {
+    print "=" x 50 . "\n";
+    print "Commandline opts as passed to script:\n";
+    printf "\t%-15s => %s\n", $_,$opts{$_} for keys %opts;
+    print "=" x 50 . "\n";
+}
 
 # Set up some colored output flags and warn / error variables
 my $warn  = colored( "WARN:", 'bold yellow on_black');
@@ -136,19 +164,20 @@ if ( ! qx(which vcftools) ) {
 }
 
 # Double check that fuzzy option is combined intelligently with a position lookup.
-if ( $fuzzy ) {
-    if ( $fuzzy > 3 ) {
+#if ( $fuzzy ) {
+if ( $opts{'fuzzy'}) {
+    if ( $opts{'fuzzy'} > 3 ) {
         print "\n$err Can not trim more than 3 digits from the query string.\n\n";
         print $usage;
         exit 1;
     }
-    elsif ( $lookup ) {
+    elsif ( $opts{'lookup'} ) {
         print "\n$warn fuzzy lookup in batch mode may produce a lot of results! Continue? ";
         chomp( my $response = <STDIN> );
         exit if ( $response =~ /[(n|no)]/i );
         print "\n";
     }
-    elsif ( ! $positions && ! $hsids ) {
+    elsif ( ! $opts{'positions'} && ! $opts{'HS'} ) {
         print "$err must include position or hotspot ID query with the '-f' option\n\n";
         print $usage;
         exit 1;
@@ -156,9 +185,9 @@ if ( $fuzzy ) {
 }
 
 # Throw a warning if using the ovat filter without asking for OVAT annotations.
-if ( $ovat_filter && ! $annots ) {
-    print "$info Requested Oncomine annotation filter without adding the OVAT annotations. Auto adding the OVAT annotations!\n" if $verbose;
-    $annots=1;
+if ( $opts{'OVAT'} && ! $opts{'annot'}) {
+    print "$info Requested Oncomine annotation filter without adding the OVAT annotations. Auto adding the OVAT annotations!\n" if $opts{'verbose'};
+    $opts{'annot'}=1;
 }
 
 # Make sure enough args passed to script
@@ -167,7 +196,7 @@ if ( scalar( @ARGV ) < 1 ) {
     print $usage;
     exit 1;
 }
-
+=cut 
 # Parse the lookup file and add variants to the postions list if processing batch-wise
 my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV );
 if ($lookup) {
@@ -253,18 +282,30 @@ my ($ir_annot,$ovat_annot);
 ( grep { /OncomineVariantAnnotation/ } @header ) ? ($ovat_annot = 1) : ($ovat_annot = 0);
 ( grep { /IonReporterExportVersion/ } @header ) ? ($ir_annot = 1) : ($ir_annot = 0);
 die "$err IR output selected, but VCF does not appear to have been run through IR!\n" if ( $annots && $ir_annot == 0 ); 
+
+# Check for snpeff annotations.
+my $snpeff_annot;
+( grep /SnpEffCmd/, @header) ? ($snpeff_annot = 1) : ($snpeff_annot = 0);
+die "$err SnpEff annotation output selected, but SnpEff was not run on this VCF file. Run SnpEff first and try again.\n" if ($snpeff and $snpeff_annot == 0);
 close $vcf_fh;
 
 # Get the data from VCF Tools
 my $vcfFormat;
 if ($annots) {
-    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t%INFO/FUNC\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
+    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t%INFO/FUNC\t[%GT\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
+} 
+elsif ($snpeff_annot) {
+    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t%INFO/ANN\t[%GT\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
 } else {
-    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
+    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GT\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
     #$vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/GENE\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
 }
 
-my @extracted_data = qx/ vcf-query $inputVCF -f $vcfFormat /;
+#my @extracted_data = qx/ vcf-query $inputVCF -f $vcfFormat /;
+my @extracted_data = qx/bcftools query -f $vcfFormat $inputVCF/;
+
+dd \@extracted_data;
+exit;
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
