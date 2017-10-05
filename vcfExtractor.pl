@@ -18,11 +18,11 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.0.0_051617";
+my $version = "v7.0.2_100417";
 
-#print colored("*" x 50, 'bold yellow on_black'), "\n";
-#print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
-#print colored("*" x 50, 'bold yellow on_black'), "\n\n";
+print colored("*" x 50, 'bold yellow on_black'), "\n";
+print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
+print colored("*" x 50, 'bold yellow on_black'), "\n\n";
 
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
@@ -57,13 +57,14 @@ USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
     Program Options
     -a, --annot     Add IR and Oncomine OVAT annotation information to output if available.
     -V, --Verbose   Print additional information during processing.
+    -c, --cfdna    Data is from a cfDNA run, and some metrics and thresholds will be different.
     -o, --output    Send output to custom file.  Default is STDOUT.
     -v, --version   Version information
     -h, --help      Print this help information
 
     Filter and Output Options
     -p, --pos       Output only variants at this position.  Format is "chr<x>:######" 
-    -c, --cosid     Look for variant with matching COSMIC ID (or other Hotspot ID)
+    -i, --id        Look for variant with matching variant ID (COSMIC ID or other Hotspot ID)
     -g, --gene      Filter variant calls by gene id. Can input a single value or comma separated list of gene
                     ids to query. Can only be used with the '--annot' option as the 
                     annotations have to come from IR.
@@ -91,11 +92,13 @@ my $ovat_filter;
 my $verbose;
 my $gene;
 my $hotspots;
+my $cfdna;
 
 GetOptions( "output|o=s"    => \$outfile,
-            "annot|a"       => \$annots,
+            "cfdna|c"       => \$cfdna,
+            "annot|a"       => \$annots, 
             "OVAT|O"        => \$ovat_filter,
-            "cosid|c=s"     => \$hsids,
+            "id|i=s"        => \$hsids,
             "NOCALL|N"      => \$nocall,
             "pos|p=s"       => \$positions,
             "lookup|l=s"    => \$lookup,
@@ -256,6 +259,8 @@ die "$err IR output selected, but VCF does not appear to have been run through I
 close $vcf_fh;
 
 # Get the data from VCF Tools
+# TODO: Check this.  If we are running the cfDNA panel, we may want to get some new fields for output (like MAF, LOD%, Famlies, etc.
+#
 my $vcfFormat;
 if ($annots) {
     $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t%INFO/FUNC\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
@@ -289,16 +294,12 @@ sub parse_data {
     for ( @$data ) {
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
-        # DEBUG: Can add position to filter and output a hash of data to help.
-        #next unless $pos eq 'chr1:120463044';
-        #my @tmp_data = ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp );
-        #my @fields = qw(pos ref alt filter reason oid opos oref oalt omapalt func gtr af fro ro fao ao dp);
-        #my %foo;
-        #@foo{@fields} = map{chomp;$_} @tmp_data;
-        #print '='x25, "  DEBUG  ", "="x25, "\n";
-        #dd \%foo;
-        #print '='x59, "\n";
-
+        # If we need to filter on a position for debugging, this is the spot to do it
+        # DEBUG
+        my $debug_position = "chr1:120463044";
+        next unless $pos = $debug_position;
+        print_debug_output([split(/\t/)]);
+        
         # IR generates CNV and Fusion entries that are not compatible.  
         next if ( $alt =~ /[.><\]\d+]/ ); 
 
@@ -376,25 +377,37 @@ sub parse_data {
                     push( @{$parsed_data{$var_id}}, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
 
+                # In the new cfDNA panel, we can have positives with < 1% VAF.  Need to be able to output those as well.  
                 if ($noref) {
                     if ( ${$parsed_data{$var_id}}[6] ne '.' ) {
+                        # TODO: Verify that this is working correctly.  I think so, but just want to verify with a few tests.
                         if ( ${$parsed_data{$var_id}}[6] < 1 ) {
+                            if ( $cfdna and ${$parsed_data{$var_id}}[6] > 0.001 )  {
+                                next;
+                            } else {
                                 delete $parsed_data{$var_id};
                                 next;
+                            }
                         }
+
                     }
                 }
+                # TODO: Check this step for annotation problems too.  Might be the source of the issue.
                 # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
                 push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
                 push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
             }
         }
     }
+    #dd \%parsed_data;
+    #exit;
     return %parsed_data;
 }
 
 sub get_ovat_annot {
     # If this is IR VCF, add in the OVAT annotation. 
+    # TODO: This may not be working correctly for cfDNA panel.  I am getting differently sized arrays, some with OVAT annotations, and some without.
+    #       Maybe this is due to the way that IR is handling filtering for this?
     no warnings;
     my ($func, $norm_data) = @_;
     my %data;
@@ -653,6 +666,7 @@ sub format_output {
             print "\n>>> No variant found at position(s): ", join(', ', @positions), "! <<<\n" and exit;
         } 
     } else {
+        # TODO: Ouput formatting is not rigtht for cfDNA data.  I think there is some missing formatting.
         my @output_data;
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
             ($nocall) ? (@output_data = @{$$data{$variant}}[0,1,2,6..18]) : (@output_data = @{$$data{$variant}}[0..4,6..18]);
@@ -660,7 +674,6 @@ sub format_output {
             printf $format, @output_data;
         }
     }
-    
 }
 
 sub field_width {
@@ -693,6 +706,19 @@ sub batch_lookup {
 
     my $query_string = join( ' ', @query_list );
     return \$query_string;
+}
+
+sub print_debug_output {
+    # DEBUG: Can add position to filter and output a hash of data to help.
+    my $data = shift;
+    my @fields = qw(pos ref alt filter reason oid opos oref oalt omapalt func gtr af fro ro fao ao dp);
+    my %foo;
+
+    @foo{@fields} = map{chomp;$_} @$data;
+    print '='x25, "  DEBUG  ", "="x25, "\n";
+    dd \%foo;
+    print '='x59, "\n";
+    exit;
 }
 
 sub __exit__ {
