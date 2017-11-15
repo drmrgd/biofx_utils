@@ -18,12 +18,11 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.2.111517";
+my $version = "v7.3.111517";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
-print colored("*" x 75, 'bold yellow on_black'), "\n\n";
-
+print colored("*" x 75, 'bold yellow on_black'), "\n\n"; 
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output 
 a simple table in the following format:
@@ -69,9 +68,9 @@ USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
     Filter and Output Options
     -p, --pos       Output only variants at this position.  Format is "chr<x>:######" 
     -i, --id        Look for variant with matching variant ID (COSMIC ID or other Hotspot ID)
-    -g, --gene      Filter variant calls by gene id. Can input a single value or comma separated list of gene
-                    ids to query. Can only be used with the '--annot' option as the 
-                    annotations have to come from IR.
+    -g, --gene      Filter variant calls by gene id. Can input a single value or comma 
+                    separated list of gene ids to query. Can only be used with 
+                    the '--annot' option as the annotations have to come from IR.
     -l, --lookup    Read a list of variants from a file to query the VCF. 
     -f, --fuzzy     Less precise (fuzzy) position match. Strip off n digits from the position string.
                     MUST be used with a query option (e.g. -p, -c, -l), and can not trim more than 3 
@@ -241,7 +240,6 @@ my %vcf_filters = (
     'gene'     => \@query_genes,
     'hsid'     => \@cosids,
     'position' => \@coords,
-    'cfDNA'    => [$cfdna],
 );
 print "Applied filters: \n" and dd \%vcf_filters if DEBUG or $verbose;
 
@@ -262,6 +260,7 @@ open ( my $vcf_fh, "<", $inputVCF );
 my @header = grep { /^#/ } <$vcf_fh>;
 die "$err '$inputVCF' does not appear to be a valid VCF file or does not have a 
     header.\n" unless @header;
+close $vcf_fh;
 
 # Crude check for TVC3.2 or TVC4.0+ VCF file.  Still need to refine this
 if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
@@ -278,6 +277,21 @@ my ($ir_annot,$ovat_annot);
 
 if ( $annots && $ir_annot == 0 ) {
     die "$err IR output selected, but VCF does not appear to have been run through IR!\n";
+}
+
+# Figure out if these are cfDNA files to help with downstream options.
+if (grep { /^##INFO=<ID=MMDP/ } @header) {
+        if (! $cfdna) {
+            print "$err You appear to be running a VCF derived from the taqseq ",
+                "cfDNA panel, but have not set the --cfdna option.\n";
+            exit 1
+        }
+        elsif ($ovat_filter) {
+            print "$err OVAT filtered output selected, but VCF appears to have been run ",
+            "through the TagSeq cfDNA pipeline, and and there is no OVAT annotation\n",
+            "available at this time!\n";
+            exit 1;
+        }
 }
 
 # Get the data from VCF Tools
@@ -299,11 +313,13 @@ my @extracted_data = qx( vcf-query $inputVCF -f "$vcf_format\n" );
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
+#dd \%vcf_data;
+#__exit__(320, 'post vcf parsing.');
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
-# XXX
-__exit__(290, 'post filter data call.');
+#dd $filtered_vcf_data;
+#__exit__(290, 'post filter data call.');
 
 # if fuzzy results, make them look like regular
 $filtered_vcf_data = flatten_fuzzy_results($filtered_vcf_data) if $fuzzy; 
@@ -328,8 +344,8 @@ sub parse_data {
 
         # If we need to filter on a position for debugging, this is the spot 
         # to do it.
-        #my $debug_position = "chr10:89692803";
-        #next unless $pos eq $debug_position;
+        my $debug_position = "chr11:534286";
+        next unless $pos eq $debug_position;
         #print_debug_output([split(/\t/)]);
         #__exit__('319','Post debugger output');
         
@@ -411,18 +427,17 @@ sub parse_data {
                     push( @{$parsed_data{$var_id}}, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
                 
-                # XXX
-                # Filter out reference calls if we have turned on the noref 
-                # filter. Have to leave the NOCALL calls if we have left those
-                # in, and have to deal with sub 1% VAFs for cf DNA assay.
+                # Filter out reference calls if we have turned on the noref filter. Have to leave the NOCALL 
+                # calls if we have left those in, and have to deal with sub 1% VAFs for cf DNA assay.
                 my $calc_vaf = ${$parsed_data{$var_id}}[6];
+                print "calc vaf: $calc_vaf\n";
 
                 if ( $calc_vaf ne '.' ) {
                     if ($calc_vaf == 0) {
-                        delete $parsed_data{$var_id} if $noref and next;
+                        delete $parsed_data{$var_id} and next if $noref;
                     }
                     elsif ($calc_vaf < 1) {
-                        delete $parsed_data{$var_id} if ! $cfdna and next;
+                        delete $parsed_data{$var_id} and next if ! $cfdna; 
                     }
                 }
 
@@ -440,9 +455,7 @@ sub parse_data {
 
 sub get_ovat_annot {
     # If this is IR VCF, add in the OVAT annotation. 
-    # TODO: This may not be working correctly for cfDNA panel.  I am getting differently sized arrays, some with OVAT annotations, and some without.
-    #       Maybe this is due to the way that IR is handling filtering for this?
-    no warnings;
+    #no warnings;
     my ($func, $norm_data) = @_;
     my %data;
     my @wanted_elems = qw(oncomineGeneClass oncomineVariantClass gene transcript 
@@ -453,8 +466,10 @@ sub get_ovat_annot {
 
     my $match;
     for my $func_block ( @$json_annot ) {
-        # if there is a normalizedRef entry, then let's map the func block appropriately
-        if ($$func_block{'normalizedRef'}) {
+        # if there is a normalizedRef entry, then let's map the func block 
+        # appropriately....as long as we're not running the cfDNA panel, which
+        # has new "decoy" alleles that I think screw this all up.  
+        if (! $cfdna && $$func_block{'normalizedRef'}) {
             if ($$func_block{'normalizedRef'} eq $$norm_data{'normalizedRef'} && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}) {
                 %data = %$func_block;
                 $match = 1;
@@ -565,10 +580,9 @@ sub filter_data {
     my @fuzzy_pos;
     my %counter;
 
-    my $on    = colored( "On", 'bold green on_black');
-    my $off   = colored( "Off", 'bold red on_black');
+    my $on  = colored( "On", 'bold green on_black');
+    my $off = colored( "Off", 'bold red on_black');
 
-    # XXX
     # First run OVAT filter; no need to push big list of variants through other filters.
     if ($verbose) {
         print "$info OVAT filter status: ";
@@ -579,8 +593,6 @@ sub filter_data {
         ($nocall) ? print "$off!\n" : print "$on.\n";
         print "$info Reference calls output to results: ";
         ($noref) ? print "$off!\n" : print "$on.\n";
-        print "$info cfDNA values output to results: ";
-        ($cfdna) ? print "$on!\n" : print "$off.\n";
     }
     $data = ovat_filter($data) if $ovat_filter;
     $data = hs_filtered($data) if $hotspots;
@@ -666,7 +678,6 @@ sub flatten_fuzzy_results {
     return \%results;
 }
 
-
 sub format_output {
     # Format and print out the results
     # w1 => REF(index:1), w2 => ALT(index:2), w3 => Filter comment(index:4), w4 => CDS(index:13), w5 => AA(index:14)
@@ -690,6 +701,11 @@ sub format_output {
         $filter_width = 17 if $filter_width < 17;
         $format = "%-17s %-${ref_width}s %-${alt_width}s %-8s %-${filter_width}s %-8s %-8s %-8s %-10s %-12s\n";
         @header = qw( CHROM:POS REF ALT Filter Filter_Reason VAF TotCov RefCov AltCov COSID );
+        if ($cfdna) {
+            $header[6] = "AmpCoverage";
+            $header[7] = "WT_Mol_Cov";
+            $header[8] = "Alt_Mol_Cov";
+        }
     }
     if ($annots) {
         ($cds_width,$aa_width) = field_width($data,[13,14]) if %$data;
@@ -700,7 +716,6 @@ sub format_output {
             $format =~ s/\n$/ %-21s %-21s \n/;
         }
     }
-    
     printf $format, @header;
 
     # Handle null result reporting depending on the filter used.
@@ -730,6 +745,7 @@ sub field_width {
     # Load in a hash of data and an array of indices for which we want field width info, and
     # output an array of field widths to use in the format string.
     my ($data,$indices) = @_;
+    dd $data;
     my @return_widths;
     for my $pos (@$indices) {
         my @elems = map { ${$$data{$_}}[$pos] } keys %$data;
