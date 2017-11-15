@@ -18,11 +18,11 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.0.2_100417";
+my $version = "v7.1.111517";
 
-print colored("*" x 50, 'bold yellow on_black'), "\n";
+print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
-print colored("*" x 50, 'bold yellow on_black'), "\n\n";
+print colored("*" x 75, 'bold yellow on_black'), "\n\n";
 
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
@@ -57,7 +57,7 @@ USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
     Program Options
     -a, --annot     Add IR and Oncomine OVAT annotation information to output if available.
     -V, --Verbose   Print additional information during processing.
-    -c, --cfdna    Data is from a cfDNA run, and some metrics and thresholds will be different.
+    -c, --cfdna     Data is from a cfDNA run, and some metrics and thresholds will be different.
     -o, --output    Send output to custom file.  Default is STDOUT.
     -v, --version   Version information
     -h, --help      Print this help information
@@ -226,6 +226,7 @@ my %vcf_filters = (
     'gene'     => \@query_genes,
     'hsid'     => \@cosids,
     'position' => \@coords,
+    'cfDNA'    => $cfdna,
 );
 print "Applied filters: \n" and dd \%vcf_filters if DEBUG or $verbose;
 
@@ -259,19 +260,29 @@ die "$err IR output selected, but VCF does not appear to have been run through I
 close $vcf_fh;
 
 # Get the data from VCF Tools
-# TODO: Check this.  If we are running the cfDNA panel, we may want to get some new fields for output (like MAF, LOD%, Famlies, etc.
-#
-my $vcfFormat;
+my @wanted_fields = qw(%CHROM:%POS %REF %ALT %FILTER %INFO/FR %INFO/OID %INFO/OPOS 
+    %INFO/OREF %INFO/OALT %INFO/OMAPALT --- [%GTR %AF %FRO %RO %FAO %AO %DP]);
+
 if ($annots) {
-    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t%INFO/FUNC\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
-} else {
-    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
+    $wanted_fields[10] = '%INFO/FUNC';
+}
+elsif ($cfdna) {
+    $wanted_fields[12] = '%MAF';
+    $wanted_fields[13] = '%MRO';
+    $wanted_fields[15] = '%MAO';
+    $wanted_fields[17] = '%MDP';
 }
 
-my @extracted_data = qx/ vcf-query $inputVCF -f $vcfFormat /;
+my $vcf_format = join('\t', @wanted_fields);
+my @extracted_data = qx( vcf-query $inputVCF -f "$vcf_format\n" );
+
+# XXX
+#dd \@extracted_data;
+#exit;
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
+exit;
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
@@ -292,9 +303,11 @@ sub parse_data {
     my %parsed_data;
 
     for ( @$data ) {
-        my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
+        my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, 
+            $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
-        # If we need to filter on a position for debugging, this is the spot to do it
+        # If we need to filter on a position for debugging, this is the spot 
+        # to do it.
         # DEBUG
         my $debug_position = "chr1:120463044";
         next unless $pos = $debug_position;
@@ -307,7 +320,7 @@ sub parse_data {
         $reason =~ s/^\.,//;
 
         # Filter out vars we don't want to print out later anyway.
-        next if $reason eq "NODATA";  # Don't print out NODATA...nothing to learn there.
+        next if $reason eq "NODATA";
         $filter = "NOCALL" if ( $gtr =~ m|\./\.| );
         next if ( $nocall && $filter eq "NOCALL" );
         next if ( $noref && $gtr eq '0/0' );
@@ -326,18 +339,18 @@ sub parse_data {
         for my $alt_index ( 0..$#alt_array ) {
             my $alt_var = $alt_array[$alt_index];
 
-            # Get the normalizedRef, normalizedAlt, and normalizedPos values from the REF and ALT fields so that
-            # we can map the FUNC block.
+            # Get the normalizedRef, normalizedAlt, and normalizedPos values from 
+            # the REF and ALT fields so that we can map the FUNC block.
             my @coords = split(/:/, $pos);
             my %norm_data = normalize_variant(\$ref, \$alt_var, $coords[1]);
 
             my @array_pos = grep { $omapalt_array[$_] eq $alt_var } 0..$#omapalt_array;
             for my $index ( @array_pos ) {
-                #(my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$opos_array[$index]/; 
                 (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$norm_data{'normalizedPos'}/; 
                 
-                # Stupid bug with de novo and hotspot merge that can create two duplicate entries for the same
-                # variant but one with and one without a HS (also different VAF, coverage,etc). Try this to 
+                # Stupid bug with de novo and hotspot merge that can create two 
+                # duplicate entries for the same variant but one with and one 
+                # without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
                 my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index]);
                 my $cosid = $oid_array[$index];
@@ -377,6 +390,7 @@ sub parse_data {
                     push( @{$parsed_data{$var_id}}, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
 
+                # XXX
                 # In the new cfDNA panel, we can have positives with < 1% VAF.  Need to be able to output those as well.  
                 if ($noref) {
                     if ( ${$parsed_data{$var_id}}[6] ne '.' ) {
@@ -399,8 +413,8 @@ sub parse_data {
             }
         }
     }
-    #dd \%parsed_data;
-    #exit;
+    dd \%parsed_data;
+    exit;
     return %parsed_data;
 }
 
