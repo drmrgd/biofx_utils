@@ -18,20 +18,20 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.1.111517";
+my $version = "v7.2.111517";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
 print colored("*" x 75, 'bold yellow on_black'), "\n\n";
 
 my $description = <<"EOT";
-Parse and filter an Ion Torrent VCF file.  By default, this program will output a simple table in the
-following format:
+Parse and filter an Ion Torrent VCF file.  By default, this program will output 
+a simple table in the following format:
 
      CHROM:POS REF ALT Filter Filter_Reason VAF TotCov RefCov AltCov COSID
 
-However, using the '-a' option, we can add Ion Reporter (IR) annotations to the output, assuming the 
-data was run through IR.  
+However, using the '-a' option, we can add Ion Reporter (IR) annotations to the 
+output, assuming the data was run through IR.  
 
 In addition to simple output, we can also filter the data based on teh following criteria:
     - Non-reference calls can be omitted with '-n' option.
@@ -41,12 +41,16 @@ In addition to simple output, we can also filter the data based on teh following
     - Calls matching a specific gene or genes can be acquired with the '-g' option.
     - Calls matching a specific Hotspot ID can be acquired with the '-c' option.
     
-This program can also output variants that match a position query based on using the following string: 
-chr#:position. If a position is not quite known or we are dealing with a 0 vs 1 based position rule, we 
-can perform a fuzzy lookup by using the '-f' option and the number of right-most digits in the position
-that we are unsure of (e.g. -f1 => 1234*, -f2 => 123**).
+This program can also output variants that match a position query based on using
+the following string: 
+    chr#:position. 
+If a position is not quite known or we are dealing with a 0 vs 1 based position 
+rule, we can perform a fuzzy lookup by using the '-f' option and the number of 
+right-most digits in the position that we are unsure of (e.g. -f1 => 1234*, 
+-f2 => 123**).
 
-We can also use batch files to lookup multiple positions or hotspots using the '-l' option.  
+We can also use batch files to lookup multiple positions or hotspots using 
+the '-l' option.  
 
         vcfExtractor -l lookup_file <vcf_file>
 EOT
@@ -128,13 +132,12 @@ version if $ver_info;
 my $warn  = colored( "WARN:", 'bold yellow on_black');
 my $err   = colored( "ERROR:", 'bold red on_black');
 my $info  = colored( "INFO:", 'bold cyan on_black');
-my $on    = colored( "On", 'bold green on_black');
-my $off   = colored( "Off", 'bold red on_black');
 my @warnings;
 
 # Check for vcftools; we can't run without it...for now.
 if ( ! qx(which vcftools) ) {
-    print "$err Required package 'vcftools' is not installed on this system.  Install vcftools ('vcftools.sourceforge.net') and try again.\n";
+    print "$err Required package 'vcftools' is not installed on this system. ",
+        "Install vcftools ('vcftools.sourceforge.net') and try again.\n";
     exit 1;
 }
 
@@ -159,9 +162,17 @@ if ( $fuzzy ) {
 }
 
 # Throw a warning if using the ovat filter without asking for OVAT annotations.
-if ( $ovat_filter && ! $annots ) {
-    print "$info Requested Oncomine annotation filter without adding the OVAT annotations. Auto adding the OVAT annotations!\n" if $verbose;
+if ( $ovat_filter ) {
+    if ($cfdna) {
+        die "$err Can no combine the cfDNA option with the OVAT option at this time ",
+            "as it would seem that OVAT is not yet supported by \nthe pipeline. This ",
+            "might be added as a feature later on.\n";
+    }
+    elsif ( ! $annots ) {
+    print "$info Requested Oncomine annotation filter without adding the OVAT ",
+        "annotations. Auto adding the OVAT annotations!\n" if $verbose;
     $annots=1;
+    }
 }
 
 # Make sure enough args passed to script
@@ -172,6 +183,8 @@ if ( scalar( @ARGV ) < 1 ) {
 }
 
 # Parse the lookup file and add variants to the postions list if processing batch-wise
+# TODO: this is going to break with cfDNA panel since TF decided to use AA changes
+# as the ID.
 my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV );
 if ($lookup) {
     my $query_list = batch_lookup(\$lookup);
@@ -194,7 +207,8 @@ if ( $positions ) {
     @coords = split( /\s+/, $positions );
     for my $coord ( @coords ) {
         if ( $coord !~ /\Achr[0-9YX]+:\d+$/i ) {
-            print "$err '$coord' not valid. Please use the following format for position queries: 'chr#:position'\n";
+            print "$err '$coord' not valid. Please use the following format for ",
+                "position queries: 'chr#:position'\n";
             exit 1;
         }
     }
@@ -220,20 +234,22 @@ if ($gene) {
 }
 my @query_genes = map{ uc $_ } split(/,/,$gene) if $gene;
 
-# Setting up hash of filters.  Right now, only accept one type as combinations are probably redundant. We might find an 
-# excuse to this later, so, so keep the data struct.  Pass the array to the filter function later.
+# Setting up hash of filters.  Right now, only accept one type as combinations 
+# are probably redundant. We might find an  excuse to this later, so, so keep 
+# the data struct.  Pass the array to the filter function later.
 my %vcf_filters = (
     'gene'     => \@query_genes,
     'hsid'     => \@cosids,
     'position' => \@coords,
-    'cfDNA'    => $cfdna,
+    'cfDNA'    => [$cfdna],
 );
 print "Applied filters: \n" and dd \%vcf_filters if DEBUG or $verbose;
 
 # Write output to either indicated file or STDOUT
 my $out_fh;
 if ( $outfile ) {
-	open( $out_fh, ">", $outfile ) || die "Can't open the output file '$outfile' for writing: $!";
+	open( $out_fh, ">", $outfile ) 
+    || die "Can't open the output file '$outfile' for writing: $!";
 } else {
 	$out_fh = \*STDOUT;
 }
@@ -244,20 +260,25 @@ my $inputVCF = shift;
 # Check VCF file and options to make sure they're valid
 open ( my $vcf_fh, "<", $inputVCF );
 my @header = grep { /^#/ } <$vcf_fh>;
-die "$err '$inputVCF' does not appear to be a valid VCF file or does not have a header.\n" unless @header;
+die "$err '$inputVCF' does not appear to be a valid VCF file or does not have a 
+    header.\n" unless @header;
 
 # Crude check for TVC3.2 or TVC4.0+ VCF file.  Still need to refine this
 if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
-    print "$warn '$inputVCF' appears to be from TVCv3.2, and the 'tvc32' option was not selected.  The file may not be processed correctly.\n";
-    die "Pre TVCv4.0 VCF file detected.  These files are not longer supported by this utility\n";
+    print "$warn '$inputVCF' appears to be from TVCv3.2, and the 'tvc32' option 
+        was not selected.  The file may not be processed correctly.\n";
+    die "Pre TVCv4.0 VCF file detected. These files are not longer supported 
+        by this utility\n";
 }
 
 # Trigger IR / OVAT annot capture if available
 my ($ir_annot,$ovat_annot);
 ( grep { /OncomineVariantAnnotation/ } @header ) ? ($ovat_annot = 1) : ($ovat_annot = 0);
 ( grep { /IonReporterExportVersion/ } @header ) ? ($ir_annot = 1) : ($ir_annot = 0);
-die "$err IR output selected, but VCF does not appear to have been run through IR!\n" if ( $annots && $ir_annot == 0 ); 
-close $vcf_fh;
+
+if ( $annots && $ir_annot == 0 ) {
+    die "$err IR output selected, but VCF does not appear to have been run through IR!\n";
+}
 
 # Get the data from VCF Tools
 my @wanted_fields = qw(%CHROM:%POS %REF %ALT %FILTER %INFO/FR %INFO/OID %INFO/OPOS 
@@ -270,23 +291,22 @@ elsif ($cfdna) {
     $wanted_fields[12] = '%MAF';
     $wanted_fields[13] = '%MRO';
     $wanted_fields[15] = '%MAO';
-    $wanted_fields[17] = '%MDP';
+    $wanted_fields[17] = '%MDP]';
 }
 
 my $vcf_format = join('\t', @wanted_fields);
 my @extracted_data = qx( vcf-query $inputVCF -f "$vcf_format\n" );
 
-# XXX
-#dd \@extracted_data;
-#exit;
-
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
-exit;
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
-$filtered_vcf_data = flatten_fuzzy_results($filtered_vcf_data) if $fuzzy; # if fuzzy results, make them look like regular
+# XXX
+__exit__(290, 'post filter data call.');
+
+# if fuzzy results, make them look like regular
+$filtered_vcf_data = flatten_fuzzy_results($filtered_vcf_data) if $fuzzy; 
 
 # Finally print it all out.
 format_output($filtered_vcf_data, \%vcf_filters);
@@ -308,12 +328,13 @@ sub parse_data {
 
         # If we need to filter on a position for debugging, this is the spot 
         # to do it.
-        # DEBUG
-        my $debug_position = "chr1:120463044";
-        next unless $pos = $debug_position;
-        print_debug_output([split(/\t/)]);
+        #my $debug_position = "chr10:89692803";
+        #next unless $pos eq $debug_position;
+        #print_debug_output([split(/\t/)]);
+        #__exit__('319','Post debugger output');
         
         # IR generates CNV and Fusion entries that are not compatible.  
+        # TODO: for cfDNA can we integrate these calls now?  
         next if ( $alt =~ /[.><\]\d+]/ ); 
 
         # Clean up filter reason string
@@ -348,12 +369,12 @@ sub parse_data {
             for my $index ( @array_pos ) {
                 (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$norm_data{'normalizedPos'}/; 
                 
+                my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index] );
+                my $cosid = $oid_array[$index];
                 # Stupid bug with de novo and hotspot merge that can create two 
                 # duplicate entries for the same variant but one with and one 
                 # without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
-                my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index]);
-                my $cosid = $oid_array[$index];
                 if ( $cosid ne '.' && exists $parsed_data{$var_id} ) {
                    delete $parsed_data{$var_id}; 
                 }
@@ -378,7 +399,7 @@ sub parse_data {
                     $gtr );
 
                 # Check to see if call is result of long indel assembler and handle appropriately. 
-                my ($vaf,$tot_coverage);
+                my ($vaf, $tot_coverage);
                 if ( $fao_array[$alt_index] eq '.' ) {
                     $tot_coverage = $ao_array[$alt_index] + $ro;
                     $vaf = vaf_calc( \$filter, \$dp, \$ro, \$ao_array[$alt_index] );
@@ -389,23 +410,22 @@ sub parse_data {
                     $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
                     push( @{$parsed_data{$var_id}}, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
-
+                
                 # XXX
-                # In the new cfDNA panel, we can have positives with < 1% VAF.  Need to be able to output those as well.  
-                if ($noref) {
-                    if ( ${$parsed_data{$var_id}}[6] ne '.' ) {
-                        # TODO: Verify that this is working correctly.  I think so, but just want to verify with a few tests.
-                        if ( ${$parsed_data{$var_id}}[6] < 1 ) {
-                            if ( $cfdna and ${$parsed_data{$var_id}}[6] > 0.001 )  {
-                                next;
-                            } else {
-                                delete $parsed_data{$var_id};
-                                next;
-                            }
-                        }
+                # Filter out reference calls if we have turned on the noref 
+                # filter. Have to leave the NOCALL calls if we have left those
+                # in, and have to deal with sub 1% VAFs for cf DNA assay.
+                my $calc_vaf = ${$parsed_data{$var_id}}[6];
 
+                if ( $calc_vaf ne '.' ) {
+                    if ($calc_vaf == 0) {
+                        delete $parsed_data{$var_id} if $noref and next;
+                    }
+                    elsif ($calc_vaf < 1) {
+                        delete $parsed_data{$var_id} if ! $cfdna and next;
                     }
                 }
+
                 # TODO: Check this step for annotation problems too.  Might be the source of the issue.
                 # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
                 push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
@@ -413,8 +433,8 @@ sub parse_data {
             }
         }
     }
-    dd \%parsed_data;
-    exit;
+    #dd \%parsed_data;
+    #exit;
     return %parsed_data;
 }
 
@@ -425,7 +445,8 @@ sub get_ovat_annot {
     no warnings;
     my ($func, $norm_data) = @_;
     my %data;
-    my @wanted_elems = qw(oncomineGeneClass oncomineVariantClass gene transcript protein coding function normalizedRef normalizedAlt location exon);
+    my @wanted_elems = qw(oncomineGeneClass oncomineVariantClass gene transcript 
+        protein coding function normalizedRef normalizedAlt location exon);
 
     $$func =~ tr/'/"/;
     my $json_annot = JSON::XS->new->decode($$func);
@@ -493,7 +514,8 @@ sub normalize_variant {
     ($norm_ref, $norm_alt, $position_delta) = rev_and_trim(\$rev_ref, \$rev_alt);
 
     my $adj_position = $position_delta + $pos;
-    return ( 'normalizedRef' => $norm_ref, 'normalizedAlt' => $norm_alt, 'normalizedPos' => $adj_position );
+    return ( 'normalizedRef' => $norm_ref, 'normalizedAlt' => $norm_alt, 
+        'normalizedPos' => $adj_position );
 }
 
 sub rev_and_trim {
@@ -517,14 +539,21 @@ sub vaf_calc {
     my ($filter, $tcov, $rcov, $acov) = @_;
     my $vaf;
 
+    # TODO: check that this works.  No reason to set $vaf to '.' if we have a 
+    # NOCALL situtation.  Instead, just let the output vaf be what it is.
     if ( $$filter eq "NOCALL" ) { 
         $vaf = '.';
     }
     elsif( $$filter eq "NODATA" || $$tcov == 0) {
+    #if( $$filter eq "NODATA" || $$tcov == 0) {
         $vaf = 0;
     }
     else {
-        $vaf = sprintf( "%.2f", 100*($$acov / $$tcov) );
+        if ($cfdna) { 
+            $vaf = sprintf( "%.4f", 100*($$acov / $$tcov) );
+        } else {
+            $vaf = sprintf( "%.2f", 100*($$acov / $$tcov) );
+        }
     }
     return $vaf;
 }
@@ -536,6 +565,10 @@ sub filter_data {
     my @fuzzy_pos;
     my %counter;
 
+    my $on    = colored( "On", 'bold green on_black');
+    my $off   = colored( "Off", 'bold red on_black');
+
+    # XXX
     # First run OVAT filter; no need to push big list of variants through other filters.
     if ($verbose) {
         print "$info OVAT filter status: ";
@@ -546,6 +579,8 @@ sub filter_data {
         ($nocall) ? print "$off!\n" : print "$on.\n";
         print "$info Reference calls output to results: ";
         ($noref) ? print "$off!\n" : print "$on.\n";
+        print "$info cfDNA values output to results: ";
+        ($cfdna) ? print "$on!\n" : print "$off.\n";
     }
     $data = ovat_filter($data) if $ovat_filter;
     $data = hs_filtered($data) if $hotspots;
@@ -553,7 +588,8 @@ sub filter_data {
     # Determine filter to run, and if none, just return the full set of data.
     my @selected_filters = grep { scalar @{$$filter{$_}} > 0 } keys %$filter;
     if (@selected_filters > 1) {
-        print "ERROR: Using more than one type of filter is redundant and not accepted at this time. (Filters chosen: ";
+        print "ERROR: Using more than one type of filter is redundant and not 
+            accepted at this time. (Filters chosen: ";
         print join(',', @selected_filters), " )\n";
         exit 1;
     }
@@ -725,14 +761,14 @@ sub batch_lookup {
 sub print_debug_output {
     # DEBUG: Can add position to filter and output a hash of data to help.
     my $data = shift;
-    my @fields = qw(pos ref alt filter reason oid opos oref oalt omapalt func gtr af fro ro fao ao dp);
+    my @fields = qw(pos ref alt filter reason oid opos oref oalt omapalt func 
+        gtr af fro ro fao ao dp);
     my %foo;
 
-    @foo{@fields} = map{chomp;$_} @$data;
+    @foo{@fields} = map{chomp; $_} @$data;
     print '='x25, "  DEBUG  ", "="x25, "\n";
     dd \%foo;
     print '='x59, "\n";
-    exit;
 }
 
 sub __exit__ {
