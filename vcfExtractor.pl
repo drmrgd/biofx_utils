@@ -18,11 +18,12 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.3.111517";
+my $version = "v7.4.111617";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
 print colored("*" x 75, 'bold yellow on_black'), "\n\n"; 
+
 my $description = <<"EOT";
 Parse and filter an Ion Torrent VCF file.  By default, this program will output 
 a simple table in the following format:
@@ -96,6 +97,7 @@ my $verbose;
 my $gene;
 my $hotspots;
 my $cfdna;
+my $debug_pos;  # undocumented.
 
 GetOptions( "output|o=s"    => \$outfile,
             "cfdna|c"       => \$cfdna,
@@ -108,6 +110,7 @@ GetOptions( "output|o=s"    => \$outfile,
             "fuzzy|f=i"     => \$fuzzy,
             "noref|n"       => \$noref,
             "gene|g=s"      => \$gene,
+            "debug_pos=s"   => \$debug_pos, #undocumented.
             "version|v"     => \$ver_info,
             "Verbose|V"     => \$verbose,
             "HS|H"          => \$hotspots,
@@ -172,6 +175,15 @@ if ( $ovat_filter ) {
         "annotations. Auto adding the OVAT annotations!\n" if $verbose;
     $annots=1;
     }
+}
+
+# Implementing a debug position method to help with development.  This is an
+# undocumented method that will allow for one to input a position and output
+# the parsed hash of data and rest of method on only that position alone.
+if ($debug_pos) {
+    print '-'x25 . '  DEBUG  ' . '-'x25, "\n";
+    print "Outputting data for position $debug_pos only.\n";
+    print '-'x59, "\n";
 }
 
 # Make sure enough args passed to script
@@ -301,7 +313,8 @@ my @wanted_fields = qw(%CHROM:%POS %REF %ALT %FILTER %INFO/FR %INFO/OID %INFO/OP
 if ($annots) {
     $wanted_fields[10] = '%INFO/FUNC';
 }
-elsif ($cfdna) {
+
+if ($cfdna) {
     $wanted_fields[12] = '%MAF';
     $wanted_fields[13] = '%MRO';
     $wanted_fields[15] = '%MAO';
@@ -313,13 +326,9 @@ my @extracted_data = qx( vcf-query $inputVCF -f "$vcf_format\n" );
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
-#dd \%vcf_data;
-#__exit__(320, 'post vcf parsing.');
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
-#dd $filtered_vcf_data;
-#__exit__(290, 'post filter data call.');
 
 # if fuzzy results, make them look like regular
 $filtered_vcf_data = flatten_fuzzy_results($filtered_vcf_data) if $fuzzy; 
@@ -335,6 +344,8 @@ if ( @warnings && $verbose ) {
 
 sub parse_data {
     # Extract the VCF information and create a hash of the data.  
+    # TODO: Want to add amplicon coverage data and LOD% data for cfDNA panel. Can
+    # add values to end of @$data array which will be undef if not available?
     my $data = shift;
     my %parsed_data;
 
@@ -342,11 +353,12 @@ sub parse_data {
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, 
             $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
-        # If we need to filter on a position for debugging, this is the spot 
-        # to do it.
-        my $debug_position = "chr11:534286";
-        next unless $pos eq $debug_position;
-        #print_debug_output([split(/\t/)]);
+        # Limit processing to just one position and output more metrics so that we
+        # can figure out what's going on.
+        if ($debug_pos) {
+            next unless $pos eq $debug_pos;
+            print_debug_output([split(/\t/)]);
+        }
         #__exit__('319','Post debugger output');
         
         # IR generates CNV and Fusion entries that are not compatible.  
@@ -430,8 +442,6 @@ sub parse_data {
                 # Filter out reference calls if we have turned on the noref filter. Have to leave the NOCALL 
                 # calls if we have left those in, and have to deal with sub 1% VAFs for cf DNA assay.
                 my $calc_vaf = ${$parsed_data{$var_id}}[6];
-                print "calc vaf: $calc_vaf\n";
-
                 if ( $calc_vaf ne '.' ) {
                     if ($calc_vaf == 0) {
                         delete $parsed_data{$var_id} and next if $noref;
@@ -441,7 +451,6 @@ sub parse_data {
                     }
                 }
 
-                # TODO: Check this step for annotation problems too.  Might be the source of the issue.
                 # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
                 push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
                 push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
@@ -554,13 +563,10 @@ sub vaf_calc {
     my ($filter, $tcov, $rcov, $acov) = @_;
     my $vaf;
 
-    # TODO: check that this works.  No reason to set $vaf to '.' if we have a 
-    # NOCALL situtation.  Instead, just let the output vaf be what it is.
     if ( $$filter eq "NOCALL" ) { 
         $vaf = '.';
     }
     elsif( $$filter eq "NODATA" || $$tcov == 0) {
-    #if( $$filter eq "NODATA" || $$tcov == 0) {
         $vaf = 0;
     }
     else {
@@ -681,6 +687,7 @@ sub flatten_fuzzy_results {
 sub format_output {
     # Format and print out the results
     # w1 => REF(index:1), w2 => ALT(index:2), w3 => Filter comment(index:4), w4 => CDS(index:13), w5 => AA(index:14)
+    # TODO: Fix the header for cfDNA to output the molecular tag headers since we're using that data.
     my ($data,$filter_list) = @_;
     my $ref_width = 8;
     my $alt_width = 8;
@@ -701,11 +708,6 @@ sub format_output {
         $filter_width = 17 if $filter_width < 17;
         $format = "%-17s %-${ref_width}s %-${alt_width}s %-8s %-${filter_width}s %-8s %-8s %-8s %-10s %-12s\n";
         @header = qw( CHROM:POS REF ALT Filter Filter_Reason VAF TotCov RefCov AltCov COSID );
-        if ($cfdna) {
-            $header[6] = "AmpCoverage";
-            $header[7] = "WT_Mol_Cov";
-            $header[8] = "Alt_Mol_Cov";
-        }
     }
     if ($annots) {
         ($cds_width,$aa_width) = field_width($data,[13,14]) if %$data;
@@ -745,7 +747,6 @@ sub field_width {
     # Load in a hash of data and an array of indices for which we want field width info, and
     # output an array of field widths to use in the format string.
     my ($data,$indices) = @_;
-    dd $data;
     my @return_widths;
     for my $pos (@$indices) {
         my @elems = map { ${$$data{$_}}[$pos] } keys %$data;
