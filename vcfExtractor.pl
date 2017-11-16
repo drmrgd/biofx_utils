@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.4.111617";
+my $version = "v7.5.111617";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -308,17 +308,18 @@ if (grep { /^##INFO=<ID=MMDP/ } @header) {
 
 # Get the data from VCF Tools
 my @wanted_fields = qw(%CHROM:%POS %REF %ALT %FILTER %INFO/FR %INFO/OID %INFO/OPOS 
-    %INFO/OREF %INFO/OALT %INFO/OMAPALT --- [%GTR %AF %FRO %RO %FAO %AO %DP]);
+    %INFO/OREF %INFO/OALT %INFO/OMAPALT --- --- [%GTR %AF %FRO %RO %FAO %AO %DP]);
 
 if ($annots) {
     $wanted_fields[10] = '%INFO/FUNC';
 }
 
+# XXX
 if ($cfdna) {
-    $wanted_fields[12] = '%MAF';
-    $wanted_fields[13] = '%MRO';
-    $wanted_fields[15] = '%MAO';
-    $wanted_fields[17] = '%MDP]';
+    $wanted_fields[11] = '%INFO/LOD';
+    $wanted_fields[13] = '%MAF';
+    $wanted_fields[14] = '%MRO';
+    $wanted_fields[16] = '%MAO';
 }
 
 my $vcf_format = join('\t', @wanted_fields);
@@ -326,6 +327,8 @@ my @extracted_data = qx( vcf-query $inputVCF -f "$vcf_format\n" );
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
+#dd \%vcf_data;
+#__exit__(__LINE__, '');
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
@@ -350,13 +353,17 @@ sub parse_data {
     my %parsed_data;
 
     for ( @$data ) {
+        # Don't know why, but we need a newline char for format, which needs to be removed 
+        # here for processing.
+        chomp;
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, 
-            $omapalt, $func, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
+            $omapalt, $func, $lod, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
         # Limit processing to just one position and output more metrics so that we
         # can figure out what's going on.
         if ($debug_pos) {
             next unless $pos eq $debug_pos;
+            dd $data;
             print_debug_output([split(/\t/)]);
         }
         #__exit__('319','Post debugger output');
@@ -383,6 +390,7 @@ sub parse_data {
         my @omapalt_array = split( /,/, $omapalt );
         my @fao_array     = split( /,/, $fao );
         my @ao_array      = split( /,/, $ao );
+        my @lod_array     = split( /,/, $lod );
 
         my @indices;
         for my $alt_index ( 0..$#alt_array ) {
@@ -407,16 +415,6 @@ sub parse_data {
                    delete $parsed_data{$var_id}; 
                 }
 
-                # Grab the OVAT annotation information from the FUNC block if possible.
-                my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon);
-                if ( $func eq '.' ) {
-                    push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $annots;
-                    $ovat_vc = $ovat_gc = $gene_name = "NULL";
-                } else {
-                    ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, 
-                        $exon) = get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
-                }
-
                 # Start the var string.
                 push( @{$parsed_data{$var_id}},
                     $parsed_pos,
@@ -431,12 +429,12 @@ sub parse_data {
                 if ( $fao_array[$alt_index] eq '.' ) {
                     $tot_coverage = $ao_array[$alt_index] + $ro;
                     $vaf = vaf_calc( \$filter, \$dp, \$ro, \$ao_array[$alt_index] );
-                    push(@{$parsed_data{$var_id}}, $vaf, $tot_coverage, $ro, $ao_array[$alt_index], $cosid);
+                    push(@{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, $ro, $ao_array[$alt_index], $cosid);
                 } else {
                     my @cleaned_fao_array = grep { $_ ne '.' } @fao_array;
                     $tot_coverage = sum( @cleaned_fao_array ) + $fro;
                     $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
-                    push( @{$parsed_data{$var_id}}, $vaf, $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
+                    push( @{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
                 
                 # Filter out reference calls if we have turned on the noref filter. Have to leave the NOCALL 
@@ -451,6 +449,24 @@ sub parse_data {
                     }
                 }
 
+                # Make some data changes for output if we have cfDNA and not conventional panel / assay.
+                if ($cfdna) {
+                    ${$parsed_data{$var_id}}[8] = $dp;
+                } else {
+                    # We don't have cfDNA, so remove the LOD field from output.
+                    splice(@{$parsed_data{$var_id}}, 7, 2);
+                }
+                
+                # Grab the OVAT annotation information from the FUNC block if possible.
+                my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon);
+                if ( $func eq '.' ) {
+                    push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $annots;
+                    $ovat_vc = $ovat_gc = $gene_name = "NULL";
+                } else {
+                    ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, 
+                        $exon) = get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
+                }
+
                 # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
                 push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
                 push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
@@ -458,7 +474,7 @@ sub parse_data {
         }
     }
     #dd \%parsed_data;
-    #exit;
+    #__exit__(__LINE__, "Finsished parsing data and generating variant hash.");
     return %parsed_data;
 }
 
@@ -687,58 +703,95 @@ sub flatten_fuzzy_results {
 sub format_output {
     # Format and print out the results
     # w1 => REF(index:1), w2 => ALT(index:2), w3 => Filter comment(index:4), w4 => CDS(index:13), w5 => AA(index:14)
-    # TODO: Fix the header for cfDNA to output the molecular tag headers since we're using that data.
     my ($data,$filter_list) = @_;
+
+    # Default starting values.
     my $ref_width = 8;
     my $alt_width = 8;
     my $filter_width = 17;
     my $cds_width = 7;
     my $aa_width = 7;
 
-    select $out_fh;
+    if (%$data) {
+        ($ref_width, $alt_width) = field_width($data, [1,2]);
+        ($filter_width) = field_width($data, [4]) unless $nocall;
+        $filter_width = 17 if $filter_width < 17;
+        ($cds_width,$aa_width) = field_width($data,[13,14]) if $annots;
+    }
+    
+    # Easier to store all formatter elements in a hash for string construction?
+    my %string_formatter = (
+        'CHROM:POS'             => '%-17s',
+        'REF'                   => "%-${ref_width}s",
+        'ALT'                   => "%-${alt_width}s",
+        'VAF'                   => "%-8s",
+        'TotCov'                => "%-8s",
+        'RefCov'                => "%-8s",
+        'AltCov'                => '%-8s',
+        'VarID'                 => '%-12s',
+        'Filter'                => '%-8s',
+        'Filter_Reason'         => "%-${filter_width}s",
+        'Gene'                  => '%-14s',
+        'Transcript'            => '%-15s',
+        'CDS'                   => "%-${cds_width}s",
+        'AA'                    => "%-${aa_width}s",
+        'Location'              => '%-12s',
+        'Function'              => '%-22s',
+        'oncomineGeneClass'     => '%-12s',
+        'oncomineVariantClass'  => '%-21s',
+        'LOD'                   => '%-7s',
+    );
 
     # Set up the output header and the correct format string to use.
-    my ($format, @header);
-    if ($nocall) {
-        ($ref_width, $alt_width) = field_width($data,[1,2]) if %$data;
-        $format = "%-17s %-${ref_width}s %-${alt_width}s %-8s %-8s %-8s %-8s %-12s\n";
-        @header = qw( CHROM:POS REF ALT VAF TotCov RefCov AltCov COSID );
-    } else {
-        ($ref_width,$alt_width,$filter_width) = field_width($data,[1,2,4]) if %$data;
-        $filter_width = 17 if $filter_width < 17;
-        $format = "%-17s %-${ref_width}s %-${alt_width}s %-8s %-${filter_width}s %-8s %-8s %-8s %-10s %-12s\n";
-        @header = qw( CHROM:POS REF ALT Filter Filter_Reason VAF TotCov RefCov AltCov COSID );
-    }
+    my $format;
+    my @header = qw( CHROM:POS REF ALT VAF TotCov RefCov AltCov VarID );
+    splice(@header, 3, 0, ('Filter', 'Filter_Reason')) unless ($nocall);
+
+    # Add in the LOD field if running cfDNA.  But, VAF position can change
+    # depending on whether outputting filter or not.  So, find that first.
+    my ($vaf_index) = grep { $header[$_] eq 'VAF' } 1..$#header;
+    splice(@header, $vaf_index+1, 0, 'LOD') if ($cfdna);
+
     if ($annots) {
-        ($cds_width,$aa_width) = field_width($data,[13,14]) if %$data;
         push(@header, qw(Gene Transcript CDS AA Location Function));
-        $format =~ s/\n$/ %-14s %-15s %-${cds_width}s %-${aa_width}s %-12s %-22s\n/;
-        if ($ovat_annot) {
-            push(@header,qw(oncomineGeneClass oncomineVariantClass));
-            $format =~ s/\n$/ %-21s %-21s \n/;
-        }
+        push(@header,qw(oncomineGeneClass oncomineVariantClass)) if ($ovat_annot);
     }
-    printf $format, @header;
+
+    select $out_fh;
+    my $format_string = join(' ', @string_formatter{@header}) . "\n";
+    printf $format_string, @header;
 
     # Handle null result reporting depending on the filter used.
     if (! %$data) {
-        print "\n>>> No Oncomine Annotated Variants Found! <<<\n" and exit if $ovat_filter;
-        print "\n>>> No Variants Found for Gene(s): " . join(', ', @{$$filter_list{gene}}), "! <<<\n" and exit if @{$$filter_list{gene}};
-        print "\n>>> No Variants Found for Hotspot ID(s): " . join(', ', @{$$filter_list{hsid}}), "! <<<\n" and exit if @{$$filter_list{hsid}};
+        if ($ovat_filter) {
+            print "\n>>> No Oncomine Annotated Variants Found! <<<\n";
+            exit;
+        }
+        if (@{$$filter_list{'gene'}}) {
+            print "\n>>> No Variants Found for Gene(s): " . join(', ', @{$$filter_list{gene}}), "! <<<\n";
+            exit;
+        }
+        if (@{$$filter_list{'hsid'}}) {
+            print "\n>>> No Variants Found for Hotspot ID(s): " . join(', ', @{$$filter_list{hsid}}), "! <<<\n";
+            exit;
+        }
         if (@{$$filter_list{position}}) {
             my @positions;
             for my $query (@{$$filter_list{position}}) {
-                ($fuzzy) ? push(@positions, (substr($query, 0, -$fuzzy) . '*'x$fuzzy)) : push(@positions, $query);
+                ($fuzzy) 
+                    ? push(@positions, (substr($query, 0, -$fuzzy) . '*'x$fuzzy)) 
+                    : push(@positions, $query);
             }
             print "\n>>> No variant found at position(s): ", join(', ', @positions), "! <<<\n" and exit;
         } 
     } else {
-        # TODO: Ouput formatting is not rigtht for cfDNA data.  I think there is some missing formatting.
         my @output_data;
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
-            ($nocall) ? (@output_data = @{$$data{$variant}}[0,1,2,6..18]) : (@output_data = @{$$data{$variant}}[0..4,6..18]);
+            ($nocall) 
+                ? (@output_data = @{$$data{$variant}}[0,1,2,6..18]) 
+                : (@output_data = @{$$data{$variant}}[0..4,6..18]);
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
-            printf $format, @output_data;
+            printf $format_string, @output_data;
         }
     }
 }
@@ -779,7 +832,7 @@ sub print_debug_output {
     # DEBUG: Can add position to filter and output a hash of data to help.
     my $data = shift;
     my @fields = qw(pos ref alt filter reason oid opos oref oalt omapalt func 
-        gtr af fro ro fao ao dp);
+        lod gtr af fro ro fao ao dp);
     my %foo;
 
     @foo{@fields} = map{chomp; $_} @$data;
