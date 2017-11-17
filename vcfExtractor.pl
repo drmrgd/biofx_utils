@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.5.111617";
+my $version = "v7.6.111617";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -194,10 +194,13 @@ if ( scalar( @ARGV ) < 1 ) {
 }
 
 # Parse the lookup file and add variants to the postions list if processing batch-wise
-# TODO: this is going to break with cfDNA panel since TF decided to use AA changes
-# as the ID.
 my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV );
 if ($lookup) {
+    if ($cfdna) {
+        print "You can not use HS lookup with the cfDNA option at this time since ",
+            "the variant ID is an amino acid sequence and difficult\nto work with.\n";
+        exit 1;
+    }
     my $query_list = batch_lookup(\$lookup);
     if ( grep { $$query_list =~ /$_\d+/ } @valid_hs_ids ) {
         $hsids = $$query_list;
@@ -292,7 +295,7 @@ if ( $annots && $ir_annot == 0 ) {
 }
 
 # Figure out if these are cfDNA files to help with downstream options.
-if (grep { /^##INFO=<ID=MMDP/ } @header) {
+if (grep { /^##INFO=<ID=LOD/ } @header) {
         if (! $cfdna) {
             print "$err You appear to be running a VCF derived from the taqseq ",
                 "cfDNA panel, but have not set the --cfdna option.\n";
@@ -300,10 +303,16 @@ if (grep { /^##INFO=<ID=MMDP/ } @header) {
         }
         elsif ($ovat_filter) {
             print "$err OVAT filtered output selected, but VCF appears to have been run ",
-            "through the TagSeq cfDNA pipeline, and and there is no OVAT annotation\n",
-            "available at this time!\n";
+                "through the TagSeq cfDNA pipeline, and and there is no OVAT annotation\n",
+                "available at this time!\n";
             exit 1;
         }
+} else {
+    if ($cfdna) {
+        print "$err cfDNA option (--cfdna) selected, but VCF does not appear to be ", 
+            "from a cfDNA run!\n";
+        exit 1; 
+    }
 }
 
 # Get the data from VCF Tools
@@ -314,7 +323,6 @@ if ($annots) {
     $wanted_fields[10] = '%INFO/FUNC';
 }
 
-# XXX
 if ($cfdna) {
     $wanted_fields[11] = '%INFO/LOD';
     $wanted_fields[13] = '%MAF';
@@ -327,8 +335,6 @@ my @extracted_data = qx( vcf-query $inputVCF -f "$vcf_format\n" );
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
-#dd \%vcf_data;
-#__exit__(__LINE__, '');
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
@@ -347,8 +353,6 @@ if ( @warnings && $verbose ) {
 
 sub parse_data {
     # Extract the VCF information and create a hash of the data.  
-    # TODO: Want to add amplicon coverage data and LOD% data for cfDNA panel. Can
-    # add values to end of @$data array which will be undef if not available?
     my $data = shift;
     my %parsed_data;
 
@@ -363,13 +367,10 @@ sub parse_data {
         # can figure out what's going on.
         if ($debug_pos) {
             next unless $pos eq $debug_pos;
-            dd $data;
             print_debug_output([split(/\t/)]);
         }
-        #__exit__('319','Post debugger output');
         
         # IR generates CNV and Fusion entries that are not compatible.  
-        # TODO: for cfDNA can we integrate these calls now?  
         next if ( $alt =~ /[.><\]\d+]/ ); 
 
         # Clean up filter reason string
@@ -422,24 +423,28 @@ sub parse_data {
                     $norm_data{'normalizedAlt'},
                     $filter, 
                     $reason, 
-                    $gtr );
+                    #$gtr );
+                );
 
                 # Check to see if call is result of long indel assembler and handle appropriately. 
                 my ($vaf, $tot_coverage);
                 if ( $fao_array[$alt_index] eq '.' ) {
                     $tot_coverage = $ao_array[$alt_index] + $ro;
                     $vaf = vaf_calc( \$filter, \$dp, \$ro, \$ao_array[$alt_index] );
-                    push(@{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, $ro, $ao_array[$alt_index], $cosid);
+                    push(@{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, $ro,
+                        $ao_array[$alt_index], $cosid);
                 } else {
                     my @cleaned_fao_array = grep { $_ ne '.' } @fao_array;
                     $tot_coverage = sum( @cleaned_fao_array ) + $fro;
                     $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
-                    push( @{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
+                    push( @{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, 
+                        $fro, $fao_array[$alt_index], $cosid );
                 }
                 
                 # Filter out reference calls if we have turned on the noref filter. Have to leave the NOCALL 
                 # calls if we have left those in, and have to deal with sub 1% VAFs for cf DNA assay.
-                my $calc_vaf = ${$parsed_data{$var_id}}[6];
+                #my $calc_vaf = ${$parsed_data{$var_id}}[6];
+                my $calc_vaf = ${$parsed_data{$var_id}}[5];
                 if ( $calc_vaf ne '.' ) {
                     if ($calc_vaf == 0) {
                         delete $parsed_data{$var_id} and next if $noref;
@@ -449,13 +454,25 @@ sub parse_data {
                     }
                 }
 
+                #XXX
+                #print "Check at line: " . __LINE__ . "\n";
+                #dd \%parsed_data;
+
                 # Make some data changes for output if we have cfDNA and not conventional panel / assay.
                 if ($cfdna) {
-                    ${$parsed_data{$var_id}}[8] = $dp;
-                } else {
-                    # We don't have cfDNA, so remove the LOD field from output.
-                    splice(@{$parsed_data{$var_id}}, 7, 2);
+                    #${$parsed_data{$var_id}}[8] = $dp;
+                    ${$parsed_data{$var_id}}[7] = $dp;
                 }
+                else {
+                    # We don't have cfDNA, so remove the LOD field from output.
+                    #splice(@{$parsed_data{$var_id}}, 7, 2);
+                    splice(@{$parsed_data{$var_id}}, 6, 1);
+                }
+                
+                #print '*'x50, "\n";
+                #print "Check at line: " . __LINE__ . "\n";
+                #dd \%parsed_data;
+                #print '*'x50, "\n";
                 
                 # Grab the OVAT annotation information from the FUNC block if possible.
                 my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon);
@@ -605,7 +622,6 @@ sub filter_data {
     my $on  = colored( "On", 'bold green on_black');
     my $off = colored( "Off", 'bold red on_black');
 
-    # First run OVAT filter; no need to push big list of variants through other filters.
     if ($verbose) {
         print "$info OVAT filter status: ";
         ($ovat_filter) ? print "$on!\n" : print "$off.\n";
@@ -616,6 +632,8 @@ sub filter_data {
         print "$info Reference calls output to results: ";
         ($noref) ? print "$off!\n" : print "$on.\n";
     }
+    
+    # First run OVAT filter; no need to push big list of variants through other filters.
     $data = ovat_filter($data) if $ovat_filter;
     $data = hs_filtered($data) if $hotspots;
 
@@ -702,8 +720,10 @@ sub flatten_fuzzy_results {
 
 sub format_output {
     # Format and print out the results
-    # w1 => REF(index:1), w2 => ALT(index:2), w3 => Filter comment(index:4), w4 => CDS(index:13), w5 => AA(index:14)
     my ($data,$filter_list) = @_;
+    
+    #dd $data;
+    #__exit__(__LINE__,'verifying data prior to format and print');
 
     # Default starting values.
     my $ref_width = 8;
@@ -716,7 +736,7 @@ sub format_output {
         ($ref_width, $alt_width) = field_width($data, [1,2]);
         ($filter_width) = field_width($data, [4]) unless $nocall;
         $filter_width = 17 if $filter_width < 17;
-        ($cds_width,$aa_width) = field_width($data,[13,14]) if $annots;
+        ($cds_width,$aa_width) = field_width($data, [13,14]) if $annots;
     }
     
     # Easier to store all formatter elements in a hash for string construction?
@@ -743,7 +763,6 @@ sub format_output {
     );
 
     # Set up the output header and the correct format string to use.
-    my $format;
     my @header = qw( CHROM:POS REF ALT VAF TotCov RefCov AltCov VarID );
     splice(@header, 3, 0, ('Filter', 'Filter_Reason')) unless ($nocall);
 
@@ -754,7 +773,7 @@ sub format_output {
 
     if ($annots) {
         push(@header, qw(Gene Transcript CDS AA Location Function));
-        push(@header,qw(oncomineGeneClass oncomineVariantClass)) if ($ovat_annot);
+        push(@header, qw(oncomineGeneClass oncomineVariantClass)) if ($ovat_annot);
     }
 
     select $out_fh;
@@ -787,10 +806,27 @@ sub format_output {
     } else {
         my @output_data;
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
+            # @{$$data{$variant}} has:
+            #      9 fields for basic output
+            #      
+            #     19 fields for NOCAll on plus cfDNA
+
+            #print '-'x25, "\n";
+            #for my $i (0..$#{$$data{$variant}}) {
+                #print "$i: ${$$data{$variant}}[$i]\n";
+            #}
+            #print '-'x25, "\n";
+
+            # if not outputting nocall, remove fields 3 and 4; always remove genotype field.
             ($nocall) 
-                ? (@output_data = @{$$data{$variant}}[0,1,2,6..18]) 
-                : (@output_data = @{$$data{$variant}}[0..4,6..18]);
+                ? (@output_data = @{$$data{$variant}}[0,1,2,5..17]) 
+                : (@output_data = @{$$data{$variant}});
+
+            #continue;
+
+            # Fill in undef slots with NULL
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
+
             printf $format_string, @output_data;
         }
     }
