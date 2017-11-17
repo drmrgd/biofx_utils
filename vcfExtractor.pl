@@ -18,29 +18,33 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.6.111617";
+my $version = "v7.7.111617";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
 print colored("*" x 75, 'bold yellow on_black'), "\n\n"; 
 
 my $description = <<"EOT";
-Parse and filter an Ion Torrent VCF file.  By default, this program will output 
+Parse an Ion Torrent or Ion Reporter VCF file. By default, this program will output 
 a simple table in the following format:
 
      CHROM:POS REF ALT Filter Filter_Reason VAF TotCov RefCov AltCov COSID
 
-However, using the '-a' option, we can add Ion Reporter (IR) annotations to the 
-output, assuming the data was run through IR.  
+However, using the '-a' option, we can add Ion Reporter (IR) annotations, including
+OVAR annotation, to the output, assuming the data was run through IR.  
 
 In addition to simple output, we can also filter the data based on teh following criteria:
     - Non-reference calls can be omitted with '-n' option.
-    - Only calls with Hotspot IDs can be output with '-H' option.
-    - Only calls with an OVAT annotation can be output with '-O' option..
     - NOCALL variants can removed with the '-N' option.
+    - Only calls with Hotspot IDs can be output with '-i' option.
+    - Only calls with an OVAT annotation can be output with '-O' option..
     - Calls matching a specific gene or genes can be acquired with the '-g' option.
     - Calls matching a specific Hotspot ID can be acquired with the '-c' option.
     
+This program has also been updated to include parsing of TaqSeq based cfDNA assay
+results, and in addition to the LOD metric, outputs amplicon coverage as TotalCov, 
+with the rest of the coverage being derived from Molecular Family data.
+
 This program can also output variants that match a position query based on using
 the following string: 
     chr#:position. 
@@ -53,6 +57,10 @@ We can also use batch files to lookup multiple positions or hotspots using
 the '-l' option.  
 
         vcfExtractor -l lookup_file <vcf_file>
+
+In addition to the Perl modules, Sort::Versions, JSON::XS, and Term::ANSIcolor, 
+which may not be standard in your distribution, the program will require the
+vcftools ('vcftools.sourceforge.net') package to be installed and in your \$PATH.
 EOT
 
 my $usage = <<"EOT";
@@ -147,7 +155,6 @@ if ( ! qx(which vcftools) ) {
 if ( $fuzzy ) {
     if ( $fuzzy > 3 ) {
         print "\n$err Can not trim more than 3 digits from the query string.\n\n";
-        print $usage;
         exit 1;
     }
     elsif ( $lookup ) {
@@ -186,7 +193,7 @@ if ($debug_pos) {
     print '-'x59, "\n";
 }
 
-# Make sure enough args passed to script
+# Make sure VCF has been passed to script.
 if ( scalar( @ARGV ) < 1 ) {
     print "$err No VCF file passed to script!\n\n";
     print $usage;
@@ -266,20 +273,19 @@ if ( $outfile ) {
 } else {
 	$out_fh = \*STDOUT;
 }
-
 #########------------------------------ END Arg Parsing and validation ---------------------------------#########
-my $inputVCF = shift;
+my $input_vcf = shift;
 
 # Check VCF file and options to make sure they're valid
-open ( my $vcf_fh, "<", $inputVCF );
+open ( my $vcf_fh, "<", $input_vcf);
 my @header = grep { /^#/ } <$vcf_fh>;
-die "$err '$inputVCF' does not appear to be a valid VCF file or does not have a 
+die "$err '$input_vcf' does not appear to be a valid VCF file or does not have a 
     header.\n" unless @header;
 close $vcf_fh;
 
 # Crude check for TVC3.2 or TVC4.0+ VCF file.  Still need to refine this
 if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
-    print "$warn '$inputVCF' appears to be from TVCv3.2, and the 'tvc32' option 
+    print "$warn '$input_vcf' appears to be from TVCv3.2, and the 'tvc32' option 
         was not selected.  The file may not be processed correctly.\n";
     die "Pre TVCv4.0 VCF file detected. These files are not longer supported 
         by this utility\n";
@@ -331,7 +337,7 @@ if ($cfdna) {
 }
 
 my $vcf_format = join('\t', @wanted_fields);
-my @extracted_data = qx( vcf-query $inputVCF -f "$vcf_format\n" );
+my @extracted_data = qx( vcf-query $input_vcf -f "$vcf_format\n" );
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
@@ -422,8 +428,7 @@ sub parse_data {
                     $norm_data{'normalizedRef'},
                     $norm_data{'normalizedAlt'},
                     $filter, 
-                    $reason, 
-                    #$gtr );
+                    $reason
                 );
 
                 # Check to see if call is result of long indel assembler and handle appropriately. 
@@ -443,7 +448,6 @@ sub parse_data {
                 
                 # Filter out reference calls if we have turned on the noref filter. Have to leave the NOCALL 
                 # calls if we have left those in, and have to deal with sub 1% VAFs for cf DNA assay.
-                #my $calc_vaf = ${$parsed_data{$var_id}}[6];
                 my $calc_vaf = ${$parsed_data{$var_id}}[5];
                 if ( $calc_vaf ne '.' ) {
                     if ($calc_vaf == 0) {
@@ -454,25 +458,14 @@ sub parse_data {
                     }
                 }
 
-                #XXX
-                #print "Check at line: " . __LINE__ . "\n";
-                #dd \%parsed_data;
-
                 # Make some data changes for output if we have cfDNA and not conventional panel / assay.
                 if ($cfdna) {
-                    #${$parsed_data{$var_id}}[8] = $dp;
                     ${$parsed_data{$var_id}}[7] = $dp;
                 }
                 else {
                     # We don't have cfDNA, so remove the LOD field from output.
-                    #splice(@{$parsed_data{$var_id}}, 7, 2);
                     splice(@{$parsed_data{$var_id}}, 6, 1);
                 }
-                
-                #print '*'x50, "\n";
-                #print "Check at line: " . __LINE__ . "\n";
-                #dd \%parsed_data;
-                #print '*'x50, "\n";
                 
                 # Grab the OVAT annotation information from the FUNC block if possible.
                 my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon);
@@ -497,7 +490,6 @@ sub parse_data {
 
 sub get_ovat_annot {
     # If this is IR VCF, add in the OVAT annotation. 
-    #no warnings;
     my ($func, $norm_data) = @_;
     my %data;
     my @wanted_elems = qw(oncomineGeneClass oncomineVariantClass gene transcript 
@@ -533,12 +525,15 @@ sub get_ovat_annot {
     my $ref           = $data{'normalizedRef'}        // '---';
     my $alt           = $data{'normalizedAlt'}        // '---';
     my $location;
+    $data{'location'} //= '---';
+    
     if ($data{'location'} eq 'exonic') {
         $location = "Exon$data{'exon'}";
     } else {
         $location = $data{'location'};
     }
-    $location //= '---';
+    # TODO: verify this is OK>
+    #$location //= '---';
 
     # Sometimes, for reasons I'm not quite sure of, there can be an array for the functional annotation.  I think it's 
     # safe to take the most severe of the list and to use.  
@@ -657,6 +652,7 @@ sub filter_data {
             }
         }
     } 
+    # TODO: Can we clean this up and streamline it a bit?
     elsif ($selected_filters[0] eq 'gene') {
         print "$info Running the gene filter...\n" if $verbose;
         for my $variant (keys %$data) {
@@ -722,9 +718,6 @@ sub format_output {
     # Format and print out the results
     my ($data,$filter_list) = @_;
     
-    #dd $data;
-    #__exit__(__LINE__,'verifying data prior to format and print');
-
     # Default starting values.
     my $ref_width = 8;
     my $alt_width = 8;
@@ -806,27 +799,13 @@ sub format_output {
     } else {
         my @output_data;
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
-            # @{$$data{$variant}} has:
-            #      9 fields for basic output
-            #      
-            #     19 fields for NOCAll on plus cfDNA
-
-            #print '-'x25, "\n";
-            #for my $i (0..$#{$$data{$variant}}) {
-                #print "$i: ${$$data{$variant}}[$i]\n";
-            #}
-            #print '-'x25, "\n";
-
             # if not outputting nocall, remove fields 3 and 4; always remove genotype field.
             ($nocall) 
                 ? (@output_data = @{$$data{$variant}}[0,1,2,5..17]) 
                 : (@output_data = @{$$data{$variant}});
 
-            #continue;
-
             # Fill in undef slots with NULL
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
-
             printf $format_string, @output_data;
         }
     }
