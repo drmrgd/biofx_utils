@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.7.111617";
+my $version = "v7.8.111717";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -80,7 +80,11 @@ USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
     -g, --gene      Filter variant calls by gene id. Can input a single value or comma 
                     separated list of gene ids to query. Can only be used with 
                     the '--annot' option as the annotations have to come from IR.
-    -l, --lookup    Read a list of variants from a file to query the VCF. 
+    -l, --lookup    Read a list of search terms from a file to query the VCF. Note that you will 
+                    not have to use the '-p', '-g', or '-i' option (for example) when using this 
+                    option as the type will automatically be detected from the file. Also note that 
+                    just like the other options, mixed query types is not supported and will result
+                    in an error.
     -f, --fuzzy     Less precise (fuzzy) position match. Strip off n digits from the position string.
                     MUST be used with a query option (e.g. -p, -c, -l), and can not trim more than 3 
                     digits from string.
@@ -200,14 +204,18 @@ if ( scalar( @ARGV ) < 1 ) {
     exit 1;
 }
 
+# TODO:
+# Overhaul this and clean it up a bit.  We're doing several different methods to 
+# set up the same list and this can be streamlined and made more clear.
+#
 # Parse the lookup file and add variants to the postions list if processing batch-wise
 my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV );
 if ($lookup) {
-    if ($cfdna) {
-        print "You can not use HS lookup with the cfDNA option at this time since ",
-            "the variant ID is an amino acid sequence and difficult\nto work with.\n";
+    if ($positions or $hsids) {
+        print "$err You can not use individual filters with the lookup file option.\n";
         exit 1;
     }
+
     my $query_list = batch_lookup(\$lookup);
     if ( grep { $$query_list =~ /$_\d+/ } @valid_hs_ids ) {
         $hsids = $$query_list;
@@ -222,7 +230,7 @@ if ($lookup) {
 }
 
 # Double check the query (position / cosid) format is correct
-my (@coords, @cosids,@filter_list);
+my (@coords, @cosids, @filter_list);
 if ( $positions ) {
     print "Checking position id lookup...\n" if $verbose;
     @coords = split( /\s+/, $positions );
@@ -236,6 +244,11 @@ if ( $positions ) {
     push(@filter_list, 'position');
 } 
 elsif ( $hsids ) {
+    if ($cfdna) {
+        print "You can not use HS lookup with the cfDNA option at this time since ",
+            "the variant ID is an amino acid sequence and difficult\nto work with.\n";
+        exit 1;
+    }
     print "Checking variant id lookup...\n" if $verbose;
     @cosids = split( /\s+/, $hsids );
     for my $varid ( @cosids ) { 
@@ -344,9 +357,6 @@ my %vcf_data = parse_data( \@extracted_data );
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
-
-# if fuzzy results, make them look like regular
-$filtered_vcf_data = flatten_fuzzy_results($filtered_vcf_data) if $fuzzy; 
 
 # Finally print it all out.
 format_output($filtered_vcf_data, \%vcf_filters);
@@ -504,7 +514,8 @@ sub get_ovat_annot {
         # appropriately....as long as we're not running the cfDNA panel, which
         # has new "decoy" alleles that I think screw this all up.  
         if (! $cfdna && $$func_block{'normalizedRef'}) {
-            if ($$func_block{'normalizedRef'} eq $$norm_data{'normalizedRef'} && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}) {
+            if ($$func_block{'normalizedRef'} eq $$norm_data{'normalizedRef'} 
+                && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}) {
                 %data = %$func_block;
                 $match = 1;
                 last;
@@ -532,11 +543,10 @@ sub get_ovat_annot {
     } else {
         $location = $data{'location'};
     }
-    # TODO: verify this is OK>
-    #$location //= '---';
 
-    # Sometimes, for reasons I'm not quite sure of, there can be an array for the functional annotation.  I think it's 
-    # safe to take the most severe of the list and to use.  
+    # Sometimes, for reasons I'm not quite sure of, there can be an array for the 
+    # functional annotation.  I think it's safe to take the most severe of the 
+    # list and to use.  
     ($function) = grep {/(missense|nonsense)/} @$function if ref $function eq 'ARRAY';
 
     if (DEBUG) {
@@ -553,12 +563,13 @@ sub get_ovat_annot {
         print "location => $location\n";
         print "======================================================\n\n";
     }
-    return ($gene_class, $variant_class, $gene_name, $transcript, $hgvs, $protein, $function, $location );
+    return ($gene_class, $variant_class, $gene_name, $transcript, $hgvs, 
+        $protein, $function, $location );
 }
 
 sub normalize_variant {
-    # Borrowed from ThermoFisher's vcf.py script to convert IR VCFs. Trim from both ends until only unique
-    # sequence left
+    # Borrowed from ThermoFisher's vcf.py script to convert IR VCFs. Trim from 
+    # both ends until only unique sequence left
     my ($ref,$alt,$pos) = @_;
     my ($norm_ref, $norm_alt);
 
@@ -611,8 +622,6 @@ sub filter_data {
     # Filter extracted VCF data and return a hash of filtered data.
     my ($data, $filter) = @_;
     my %filtered_data;
-    my @fuzzy_pos;
-    my %counter;
 
     my $on  = colored( "On", 'bold green on_black');
     my $off = colored( "Off", 'bold red on_black');
@@ -635,49 +644,60 @@ sub filter_data {
     # Determine filter to run, and if none, just return the full set of data.
     my @selected_filters = grep { scalar @{$$filter{$_}} > 0 } keys %$filter;
     if (@selected_filters > 1) {
-        print "ERROR: Using more than one type of filter is redundant and not 
-            accepted at this time. (Filters chosen: ";
-        print join(',', @selected_filters), " )\n";
+        print "ERROR: Using more than one type of filter is redundant and not ",
+            "accepted at this time. Filters chosen: ";
+        print join(', ', @selected_filters), "\n";
         exit 1;
     }
     return $data unless @selected_filters;
 
-    # Now run full filter tree.
+    # If we're running a fuzzy position lookup, need to configure things a bit 
+    # first
+    my @fuzzy_pos;
     if ( $fuzzy ) {
         my $re = qr/(.*).{$fuzzy}/;
         @fuzzy_pos = map { /$re/ } @{$$filter{position}};
-        for my $query (@fuzzy_pos) {
-            for (sort keys %$data) {
-                push(@{$filtered_data{$query}}, [@{$$data{$_}}]) if ($$data{$_}[0] =~ /$query.{$fuzzy}$/);
-            }
-        }
+        @{$$filter{'fuzzy'}} = @fuzzy_pos;
+        $selected_filters[0] = 'fuzzy';
     } 
-    # TODO: Can we clean this up and streamline it a bit?
-    elsif ($selected_filters[0] eq 'gene') {
-        print "$info Running the gene filter...\n" if $verbose;
-        for my $variant (keys %$data) {
-            if ( grep { $$data{$variant}[11] eq $_ } @{$$filter{$selected_filters[0]}}) {
-                @{$filtered_data{$variant}} = @{$$data{$variant}};
-            }
-        }
-    }
-    elsif ($selected_filters[0] eq 'hsid') {
-        print "$info Running the HSID filter...\n" if $verbose;
-        for my $variant (keys %$data) {
-            if ( grep { $$data{$variant}[10] eq $_ } @{$$filter{$selected_filters[0]}}) {
-                @{$filtered_data{$variant}} = @{$$data{$variant}};
-            }
-        }
-    }
-    elsif ($selected_filters[0] eq 'position') {
-        print "$info Running the Position filter...\n" if $verbose;
-        for my $variant (keys %$data) {
-            if (grep { $$data{$variant}[0] eq $_ } @{$$filter{$selected_filters[0]}}) {
-                @{$filtered_data{$variant}} = @{$$data{$variant}};
-            }
-        }
-    }
+
+    # Now run filters
+    run_filter($selected_filters[0], \@{$$filter{$selected_filters[0]}}, $fuzzy, 
+        $data, \%filtered_data);
+
     return \%filtered_data;
+}
+
+sub run_filter {
+    # Run the established filter on the data and return the result.
+    my ($term, $filter_vals, $fuzzy, $data, $results) = @_;
+    my %mapped_terms = (
+        'position' => 0,
+        'gene'     => 11,
+        'hsid'     => 10,
+    );
+
+    my $index = $mapped_terms{$term};
+    # Things shift around if using cfDNA...next iteration store data in a hash!
+    $index-- unless ($cfdna or (grep { $term eq $_ } qw(position fuzzy)));
+
+    ($term eq 'hsid') ? ($term = uc($term)) : ($term = ucfirst($term));
+    print "$info Running the $term filter...\n";
+
+    for my $variant (keys %$data) {
+        # if we're running a fuzzy lookup, we need a regex match and have to do it a little
+        # differently
+        if ($term eq 'Fuzzy') {
+            if ( grep { $$data{$variant}[0] =~/$_.{$fuzzy}$/ } @$filter_vals ) {
+                @{$$results{$variant}} = @{$$data{$variant}};
+            }
+        } else {
+            if ( grep { $$data{$variant}[$index] eq $_ } @$filter_vals ) {
+                @{$$results{$variant}} = @{$$data{$variant}};
+            }
+        }
+    }
+    return $results;
 }
 
 sub ovat_filter {
@@ -698,20 +718,6 @@ sub hs_filtered {
         delete $$data{$variant} if $$data{$variant}->[10] eq '.';
     }
     return $data;
-}
-
-sub flatten_fuzzy_results {
-    # Make the fuzzy results look more like non-fuzzy match results to make reporting easier.
-    my $data = shift;
-    my %results;
-    for my $fuzzy_position (keys %$data) {
-        my $counter = 0;
-        for my $var (@{$$data{$fuzzy_position}}) {
-            $counter++;
-            $results{"$fuzzy_position:$counter"} = $var;
-        }
-    }
-    return \%results;
 }
 
 sub format_output {
