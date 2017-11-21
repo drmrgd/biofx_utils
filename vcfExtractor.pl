@@ -743,7 +743,7 @@ sub format_output {
         'CHROM:POS'             => '%-17s',
         'REF'                   => "%-${ref_width}s",
         'ALT'                   => "%-${alt_width}s",
-        'VAF'                   => "%-8s",
+        'VAF'                   => "%-9s",
         'TotCov'                => "%-8s",
         'RefCov'                => "%-8s",
         'AltCov'                => '%-8s',
