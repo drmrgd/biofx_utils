@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.8.111717";
+my $version = "v7.9.112117";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -209,7 +209,7 @@ if ( scalar( @ARGV ) < 1 ) {
 # set up the same list and this can be streamlined and made more clear.
 #
 # Parse the lookup file and add variants to the postions list if processing batch-wise
-my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV );
+my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV MAN );
 if ($lookup) {
     if ($positions or $hsids) {
         print "$err You can not use individual filters with the lookup file option.\n";
@@ -756,7 +756,7 @@ sub format_output {
         'AA'                    => "%-${aa_width}s",
         'Location'              => '%-12s',
         'Function'              => '%-22s',
-        'oncomineGeneClass'     => '%-12s',
+        'oncomineGeneClass'     => '%-21s',
         'oncomineVariantClass'  => '%-21s',
         'LOD'                   => '%-7s',
     );
