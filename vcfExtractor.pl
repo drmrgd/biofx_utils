@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.9.112117";
+my $version = "v7.10.112717";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -511,9 +511,12 @@ sub get_ovat_annot {
     my $match;
     for my $func_block ( @$json_annot ) {
         # if there is a normalizedRef entry, then let's map the func block 
-        # appropriately....as long as we're not running the cfDNA panel, which
-        # has new "decoy" alleles that I think screw this all up.  
-        if (! $cfdna && $$func_block{'normalizedRef'}) {
+        # appropriately.
+        
+        # TODO: Fix this.  There is some issues mapping the appropriate FUNC block entries in 
+        #       cfDNA specimens.
+        #if (! $cfdna && $$func_block{'normalizedRef'}) {
+        if ($$func_block{'normalizedRef'}) {
             if ($$func_block{'normalizedRef'} eq $$norm_data{'normalizedRef'} 
                 && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}) {
                 %data = %$func_block;
@@ -723,7 +726,7 @@ sub hs_filtered {
 sub format_output {
     # Format and print out the results
     my ($data,$filter_list) = @_;
-    
+
     # Default starting values.
     my $ref_width = 8;
     my $alt_width = 8;
@@ -735,7 +738,7 @@ sub format_output {
         ($ref_width, $alt_width) = field_width($data, [1,2]);
         ($filter_width) = field_width($data, [4]) unless $nocall;
         $filter_width = 17 if $filter_width < 17;
-        ($cds_width,$aa_width) = field_width($data, [13,14]) if $annots;
+        ($cds_width,$aa_width) = field_width($data, [12,13]) if $annots;
     }
     
     # Easier to store all formatter elements in a hash for string construction?
@@ -755,7 +758,7 @@ sub format_output {
         'CDS'                   => "%-${cds_width}s",
         'AA'                    => "%-${aa_width}s",
         'Location'              => '%-12s',
-        'Function'              => '%-22s',
+        'Function'              => '%-28s',
         'oncomineGeneClass'     => '%-21s',
         'oncomineVariantClass'  => '%-21s',
         'LOD'                   => '%-7s',
@@ -832,7 +835,7 @@ sub field_width {
 sub get_longest {
     my $array = shift;
     my @lens = map { length($_) } @$array;
-    my @sorted_lens = sort { versioncmp( $b, $a) } @lens;
+    my @sorted_lens = sort { versioncmp($b, $a) } @lens;
     return $sorted_lens[0];
 }
 
