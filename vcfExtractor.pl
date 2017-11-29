@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.10.112717";
+my $version = "v7.11.112817";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -758,7 +758,7 @@ sub format_output {
         'CDS'                   => "%-${cds_width}s",
         'AA'                    => "%-${aa_width}s",
         'Location'              => '%-12s',
-        'Function'              => '%-28s',
+        'Function'              => '%-9s',
         'oncomineGeneClass'     => '%-21s',
         'oncomineVariantClass'  => '%-21s',
         'LOD'                   => '%-7s',
@@ -775,7 +775,11 @@ sub format_output {
 
     if ($annots) {
         push(@header, qw(Gene Transcript CDS AA Location Function));
-        push(@header, qw(oncomineGeneClass oncomineVariantClass)) if ($ovat_annot);
+        # Add OVAT annots and expand function column width if we have OVAT annots.
+        if ($ovat_annot) {
+            push(@header, qw(oncomineGeneClass oncomineVariantClass));
+            $string_formatter{'Function'} = '%-28s';
+        }
     }
 
     select $out_fh;
