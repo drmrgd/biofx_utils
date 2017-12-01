@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.11.112817";
+my $version = "v7.12.120117";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -357,6 +357,11 @@ my %vcf_data = parse_data( \@extracted_data );
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
+#dd $filtered_vcf_data;
+#for (keys %$filtered_vcf_data) {
+    #printf "%s: %s\n", $_, scalar(@{$$filtered_vcf_data{$_}});
+#}
+#__exit__(__LINE__,'');
 
 # Finally print it all out.
 format_output($filtered_vcf_data, \%vcf_filters);
@@ -409,7 +414,6 @@ sub parse_data {
         my @ao_array      = split( /,/, $ao );
         my @lod_array     = split( /,/, $lod );
 
-        my @indices;
         for my $alt_index ( 0..$#alt_array ) {
             my $alt_var = $alt_array[$alt_index];
 
@@ -417,6 +421,13 @@ sub parse_data {
             # the REF and ALT fields so that we can map the FUNC block.
             my @coords = split(/:/, $pos);
             my %norm_data = normalize_variant(\$ref, \$alt_var, $coords[1]);
+
+            # TODO: Remove this.
+            #print('*'x90, "\n");
+            #print "==> ref var: $ref\n";
+            #print "==> alt var: $alt_var\n";
+            #printf "DEBUG: Normalized Data (%s/%s)\n", $alt_index+1,scalar(@alt_array);
+            #dd \%norm_data;
 
             my @array_pos = grep { $omapalt_array[$_] eq $alt_var } 0..$#omapalt_array;
             for my $index ( @array_pos ) {
@@ -441,6 +452,9 @@ sub parse_data {
                     $reason
                 );
 
+                # XXX
+                #dd \%parsed_data;
+
                 # Check to see if call is result of long indel assembler and handle appropriately. 
                 my ($vaf, $tot_coverage);
                 if ( $fao_array[$alt_index] eq '.' ) {
@@ -457,7 +471,7 @@ sub parse_data {
                 }
                 
                 # Filter out reference calls if we have turned on the noref filter. Have to leave the NOCALL 
-                # calls if we have left those in, and have to deal with sub 1% VAFs for cf DNA assay.
+                # calls if we have left those in, and have to deal with sub 1% VAFs for cfDNA assay.
                 my $calc_vaf = ${$parsed_data{$var_id}}[5];
                 if ( $calc_vaf ne '.' ) {
                     if ($calc_vaf == 0) {
@@ -482,7 +496,9 @@ sub parse_data {
                 if ( $func eq '.' ) {
                     push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $annots;
                     $ovat_vc = $ovat_gc = $gene_name = "NULL";
-                } else {
+                } 
+                # XXX
+                else {
                     ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, 
                         $exon) = get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
                 }
@@ -493,6 +509,7 @@ sub parse_data {
             }
         }
     }
+    
     #dd \%parsed_data;
     #__exit__(__LINE__, "Finsished parsing data and generating variant hash.");
     return %parsed_data;
@@ -508,26 +525,31 @@ sub get_ovat_annot {
     $$func =~ tr/'/"/;
     my $json_annot = JSON::XS->new->decode($$func);
 
-    my $match;
     for my $func_block ( @$json_annot ) {
-        # if there is a normalizedRef entry, then let's map the func block 
-        # appropriately.
-        
-        # TODO: Fix this.  There is some issues mapping the appropriate FUNC block entries in 
-        #       cfDNA specimens.
-        #if (! $cfdna && $$func_block{'normalizedRef'}) {
+        # If there is "normalized" data, then we got a positive variant call; map the 
+        # appropriate elems.  If not, then likely ref call, and map what you can, fill
+        # in the rest later.
+        #
+        # XXX: Try adding a normalized pos mapping too; seems there can be some disconnect here if not.
         if ($$func_block{'normalizedRef'}) {
             if ($$func_block{'normalizedRef'} eq $$norm_data{'normalizedRef'} 
-                && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}) {
+                && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}
+                && $$func_block{'normalizedPos'} eq $$norm_data{'normalizedPos'}) {
                 %data = %$func_block;
-                $match = 1;
                 last;
-            } 
+            } else {
+                @data{qw(gene transcript location exon)} = @{$func_block}{qw(gene transcript location exon)};
+            }
         } 
         else {
             @data{@wanted_elems} = @{$func_block}{@wanted_elems};
         }
     }
+
+    #TODO : remove this.
+    #print "post mapping data: \n";
+    #dd \%data;
+    #print('*'x90,"\n");
 
     my $gene_class    = $data{'oncomineGeneClass'}    // '---';
     my $variant_class = $data{'oncomineVariantClass'} // '---';
@@ -550,7 +572,12 @@ sub get_ovat_annot {
     # Sometimes, for reasons I'm not quite sure of, there can be an array for the 
     # functional annotation.  I think it's safe to take the most severe of the 
     # list and to use.  
-    ($function) = grep {/(missense|nonsense)/} @$function if ref $function eq 'ARRAY';
+
+    # TODO: Refine this.  I can't figure out when and in what context we get this multiple function annotations bit.
+    #       So, for now, let's just print them all out and see what the trend looks like, and the figure it out from
+    #       there.  
+    #($function) = grep {/(missense|nonsense)/} @$function if ref $function eq 'ARRAY';
+    ($function) = join('|', @$function) if ref $function eq 'ARRAY';
 
     if (DEBUG) {
         print "======================  DEBUG  =======================\n\n";
@@ -734,11 +761,15 @@ sub format_output {
     my $cds_width = 7;
     my $aa_width = 7;
 
+    dd $data;
+    print "$annots\n";
+
+    # TODO: Still not getting correct CDS and AA widths always!
     if (%$data) {
         ($ref_width, $alt_width) = field_width($data, [1,2]);
         ($filter_width) = field_width($data, [4]) unless $nocall;
         $filter_width = 17 if $filter_width < 17;
-        ($cds_width,$aa_width) = field_width($data, [12,13]) if $annots;
+        ($cds_width,$aa_width) = field_width($data, [13,14]) if $annots;
     }
     
     # Easier to store all formatter elements in a hash for string construction?
@@ -750,7 +781,7 @@ sub format_output {
         'TotCov'                => "%-8s",
         'RefCov'                => "%-8s",
         'AltCov'                => '%-8s',
-        'VarID'                 => '%-12s',
+        'VarID'                 => '%-14s',
         'Filter'                => '%-8s',
         'Filter_Reason'         => "%-${filter_width}s",
         'Gene'                  => '%-14s',
@@ -821,6 +852,7 @@ sub format_output {
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
             printf $format_string, @output_data;
         }
+        # XXX
     }
 }
 
