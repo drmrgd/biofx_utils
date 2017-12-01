@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.12.120117";
+my $version = "v7.13.120117";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -757,16 +757,14 @@ sub format_output {
     # Default starting values.
     my $ref_width = 8;
     my $alt_width = 8;
+    my $varid_width = 12;
     my $filter_width = 17;
     my $cds_width = 7;
     my $aa_width = 7;
 
-    dd $data;
-    print "$annots\n";
-
     # TODO: Still not getting correct CDS and AA widths always!
     if (%$data) {
-        ($ref_width, $alt_width) = field_width($data, [1,2]);
+        ($ref_width, $alt_width, $varid_width) = field_width($data, [1,2,10]);
         ($filter_width) = field_width($data, [4]) unless $nocall;
         $filter_width = 17 if $filter_width < 17;
         ($cds_width,$aa_width) = field_width($data, [13,14]) if $annots;
@@ -781,7 +779,7 @@ sub format_output {
         'TotCov'                => "%-8s",
         'RefCov'                => "%-8s",
         'AltCov'                => '%-8s',
-        'VarID'                 => '%-14s',
+        'VarID'                 => "%-${varid_width}s",
         'Filter'                => '%-8s',
         'Filter_Reason'         => "%-${filter_width}s",
         'Gene'                  => '%-14s',
