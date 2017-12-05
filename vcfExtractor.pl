@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.13.120117";
+my $version = "v7.14.120517";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -503,6 +503,11 @@ sub parse_data {
                         $exon) = get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
                 }
 
+                # TODO:
+                # If we have multiple alleles per entry, especially in the case of the cfDNA panel where very
+                # low counts might come through, how can we handle this?  What if we get more than one func
+                # entry...is this being handled correctly?
+
                 # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
                 push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
                 push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
@@ -530,7 +535,11 @@ sub get_ovat_annot {
         # appropriate elems.  If not, then likely ref call, and map what you can, fill
         # in the rest later.
         #
-        # XXX: Try adding a normalized pos mapping too; seems there can be some disconnect here if not.
+        # Try adding a normalized pos mapping too; seems there can be some disconnect here if not.
+        #
+        # For cfDNA Panel, if there are two hits at the same locus, we might only get one FUNC entry (
+        # presumably the other hit is filtered out?), and in this case we only get one set of annots. But,
+        # if this passes downstream to other scripts, the wrong variant can be used.  
         if ($$func_block{'normalizedRef'}) {
             if ($$func_block{'normalizedRef'} eq $$norm_data{'normalizedRef'} 
                 && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}
@@ -762,12 +771,21 @@ sub format_output {
     my $cds_width = 7;
     my $aa_width = 7;
 
-    # TODO: Still not getting correct CDS and AA widths always!
     if (%$data) {
-        ($ref_width, $alt_width, $varid_width) = field_width($data, [1,2,10]);
-        ($filter_width) = field_width($data, [4]) unless $nocall;
-        $filter_width = 17 if $filter_width < 17;
-        ($cds_width,$aa_width) = field_width($data, [13,14]) if $annots;
+        my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = field_width($data, [1,2,10]);
+
+        # Have to pre-declare and set to 0, else we will get warning when no opt
+        my ($calc_filter_width, $calc_cds_width, $calc_aa_width) = (0)x3;
+        ($calc_filter_width) = field_width($data, [4]) unless $nocall;
+        ($calc_cds_width, $calc_aa_width) = field_width($data, [13,14]) if $annots;
+
+        # Use calculated values unless defaults are bigger.
+        $ref_width = $calc_ref_width unless $ref_width > $calc_ref_width;
+        $alt_width = $calc_alt_width unless $alt_width > $calc_alt_width;
+        $varid_width = $calc_varid_width unless $varid_width > $calc_varid_width;
+        $filter_width = $calc_filter_width unless $filter_width > $calc_filter_width;
+        $cds_width = $calc_cds_width unless $cds_width > $calc_cds_width;
+        $aa_width = $calc_aa_width unless $aa_width > $calc_aa_width;
     }
     
     # Easier to store all formatter elements in a hash for string construction?
@@ -894,6 +912,7 @@ sub print_debug_output {
     my %foo;
 
     @foo{@fields} = map{chomp; $_} @$data;
+
     print '='x25, "  DEBUG  ", "="x25, "\n";
     dd \%foo;
     print '='x59, "\n";
