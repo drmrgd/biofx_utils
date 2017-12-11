@@ -772,7 +772,10 @@ sub format_output {
     my $aa_width = 7;
 
     if (%$data) {
-        my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = field_width($data, [1,2,10]);
+        #my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = (0)x3;
+        #dd $data;
+        my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = field_width($data, [1,2,9]);
+        #exit;
 
         # Have to pre-declare and set to 0, else we will get warning when no opt
         my ($calc_filter_width, $calc_cds_width, $calc_aa_width) = (0)x3;
@@ -800,7 +803,7 @@ sub format_output {
         'VarID'                 => "%-${varid_width}s",
         'Filter'                => '%-8s',
         'Filter_Reason'         => "%-${filter_width}s",
-        'Gene'                  => '%-14s',
+        'Gene'                  => '%-9s',
         'Transcript'            => '%-15s',
         'CDS'                   => "%-${cds_width}s",
         'AA'                    => "%-${aa_width}s",
