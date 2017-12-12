@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.14.120517";
+my $version = "v7.15.121217";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -762,25 +762,25 @@ sub hs_filtered {
 sub format_output {
     # Format and print out the results
     my ($data,$filter_list) = @_;
-
+    
     # Default starting values.
-    my $ref_width = 8;
-    my $alt_width = 8;
-    my $varid_width = 12;
+    my $ref_width = 5;
+    my $alt_width = 5;
+    my $varid_width = 10;
     my $filter_width = 17;
     my $cds_width = 7;
     my $aa_width = 7;
+    my $func_width = 9;
 
     if (%$data) {
-        #my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = (0)x3;
-        #dd $data;
         my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = field_width($data, [1,2,9]);
-        #exit;
 
         # Have to pre-declare and set to 0, else we will get warning when no opt
-        my ($calc_filter_width, $calc_cds_width, $calc_aa_width) = (0)x3;
+        my ($calc_filter_width, $calc_cds_width, $calc_aa_width, $calc_func_width) = (0)x4;
         ($calc_filter_width) = field_width($data, [4]) unless $nocall;
-        ($calc_cds_width, $calc_aa_width) = field_width($data, [13,14]) if $annots;
+        if ($annots) {
+            ($calc_cds_width, $calc_aa_width, $calc_func_width) = field_width($data, [12,13,15]); 
+        }
 
         # Use calculated values unless defaults are bigger.
         $ref_width = $calc_ref_width unless $ref_width > $calc_ref_width;
@@ -789,6 +789,7 @@ sub format_output {
         $filter_width = $calc_filter_width unless $filter_width > $calc_filter_width;
         $cds_width = $calc_cds_width unless $cds_width > $calc_cds_width;
         $aa_width = $calc_aa_width unless $aa_width > $calc_aa_width;
+        $func_width = $calc_func_width unless $func_width > $calc_func_width;
     }
     
     # Easier to store all formatter elements in a hash for string construction?
@@ -803,14 +804,14 @@ sub format_output {
         'VarID'                 => "%-${varid_width}s",
         'Filter'                => '%-8s',
         'Filter_Reason'         => "%-${filter_width}s",
-        'Gene'                  => '%-9s',
+        'Gene'                  => '%-13s',
         'Transcript'            => '%-15s',
         'CDS'                   => "%-${cds_width}s",
         'AA'                    => "%-${aa_width}s",
-        'Location'              => '%-12s',
-        'Function'              => '%-9s',
+        'Location'              => '%-13s',
+        'Function'              => "%-${func_width}s",
         'oncomineGeneClass'     => '%-21s',
-        'oncomineVariantClass'  => '%-21s',
+        'oncomineVariantClass'  => '%s', # Since last field don't set a width.
         'LOD'                   => '%-7s',
     );
 
@@ -828,7 +829,6 @@ sub format_output {
         # Add OVAT annots and expand function column width if we have OVAT annots.
         if ($ovat_annot) {
             push(@header, qw(oncomineGeneClass oncomineVariantClass));
-            $string_formatter{'Function'} = '%-28s';
         }
     }
 
