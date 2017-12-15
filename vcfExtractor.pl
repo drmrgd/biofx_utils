@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 1;
 my $scriptname = basename($0);
-my $version = "v7.15.121217";
+my $version = "v7.16.121517";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -142,12 +142,12 @@ sub version {
 help if $help;
 version if $ver_info;
 
-if (DEBUG or $opts{'Verbose'}) {
-    print "=" x 50 . "\n";
-    print "Commandline opts as passed to script:\n";
-    printf "\t%-15s => %s\n", $_,$opts{$_} for keys %opts;
-    print "=" x 50 . "\n";
-}
+#if (DEBUG or $opts{'Verbose'}) {
+    #print "=" x 50 . "\n";
+    #print "Commandline opts as passed to script:\n";
+    #printf "\t%-15s => %s\n", $_,$opts{$_} for keys %opts;
+    #print "=" x 50 . "\n";
+#}
 
 # Set up some colored output flags and warn / error variables
 my $warn  = colored( "WARN:", 'bold yellow on_black');
@@ -164,18 +164,18 @@ if ( ! qx(which vcftools) ) {
 
 # Double check that fuzzy option is combined intelligently with a position lookup.
 #if ( $fuzzy ) {
-if ( $opts{'fuzzy'}) {
-    if ( $opts{'fuzzy'} > 3 ) {
+if ( $fuzzy) {
+    if ( $fuzzy > 3 ) {
         print "\n$err Can not trim more than 3 digits from the query string.\n\n";
         exit 1;
     }
-    elsif ( $opts{'lookup'} ) {
+    elsif ( $lookup ) {
         print "\n$warn fuzzy lookup in batch mode may produce a lot of results! Continue? ";
         chomp( my $response = <STDIN> );
         exit if ( $response =~ /[(n|no)]/i );
         print "\n";
     }
-    elsif ( ! $opts{'positions'} && ! $opts{'HS'} ) {
+    elsif ( ! $positions && ! $hsids ) {
         print "$err must include position or hotspot ID query with the '-f' option\n\n";
         print $usage;
         exit 1;
