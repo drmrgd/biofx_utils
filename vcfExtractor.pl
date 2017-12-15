@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 1;
 my $scriptname = basename($0);
-my $version = "v6.6.072117dev1";
+my $version = "v7.0.0_051617";
 
 print colored("*" x 80, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -297,8 +297,7 @@ if ($annots) {
 elsif ($snpeff_annot) {
     $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t%INFO/ANN\t[%GT\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
 } else {
-    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GT\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
-    #$vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/GENE\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
+    $vcfFormat = "'%CHROM:%POS\t%REF\t%ALT\t%FILTER\t%INFO/FR\t%INFO/OID\t%INFO/OPOS\t%INFO/OREF\t%INFO/OALT\t%INFO/OMAPALT\t---\t[%GTR\t%AF\t%FRO\t%RO\t%FAO\t%AO\t%DP]\n'";
 }
 
 #my @extracted_data = qx/ vcf-query $inputVCF -f $vcfFormat /;
@@ -309,8 +308,6 @@ exit;
 
 # Read in the VCF file data and create a hash
 my %vcf_data = parse_data( \@extracted_data );
-#dd \%vcf_data;
-#exit;
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
