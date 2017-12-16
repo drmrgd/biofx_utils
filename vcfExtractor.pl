@@ -16,7 +16,7 @@ use Data::Dump;
 use File::Basename;
 use Term::ANSIColor;
 
-use constant 'DEBUG' => 1;
+use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
 my $version = "v7.16.121517";
 
@@ -879,7 +879,6 @@ sub format_output {
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
             printf $format_string, @output_data;
         }
-        # XXX
     }
 }
 
