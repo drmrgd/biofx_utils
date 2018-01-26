@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.16.121517";
+my $version = "v7.17.012618";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -770,6 +770,8 @@ sub hs_filtered {
 sub format_output {
     # Format and print out the results
     my ($data,$filter_list) = @_;
+    #dd $data;
+    #exit;
     
     # Default starting values.
     my $ref_width = 5;
@@ -844,8 +846,20 @@ sub format_output {
     my $format_string = join(' ', @string_formatter{@header}) . "\n";
     printf $format_string, @header;
 
-    # Handle null result reporting depending on the filter used.
-    if (! %$data) {
+    if (%$data) {
+        my @output_data;
+        for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
+            # if not outputting nocall, remove fields 3 and 4; always remove genotype field.
+            ($nocall) 
+                ? (@output_data = @{$$data{$variant}}[0,1,2,5..18]) 
+                : (@output_data = @{$$data{$variant}});
+
+            # Fill in undef slots with NULL
+            @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
+            printf $format_string, @output_data;
+        }
+    } else {
+        # Handle null result reporting depending on the filter used.
         if ($ovat_filter) {
             print "\n>>> No Oncomine Annotated Variants Found! <<<\n";
             exit;
@@ -867,18 +881,6 @@ sub format_output {
             }
             print "\n>>> No variant found at position(s): ", join(', ', @positions), "! <<<\n" and exit;
         } 
-    } else {
-        my @output_data;
-        for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
-            # if not outputting nocall, remove fields 3 and 4; always remove genotype field.
-            ($nocall) 
-                ? (@output_data = @{$$data{$variant}}[0,1,2,5..17]) 
-                : (@output_data = @{$$data{$variant}});
-
-            # Fill in undef slots with NULL
-            @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
-            printf $format_string, @output_data;
-        }
     }
 }
 
