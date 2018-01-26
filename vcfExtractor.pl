@@ -18,7 +18,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.17.012618";
+my $version = "v7.18.012618";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
@@ -770,6 +770,17 @@ sub hs_filtered {
 sub format_output {
     # Format and print out the results
     my ($data,$filter_list) = @_;
+
+    # Dump first entry for help in figuring out array indices
+    #for (keys %$data) {
+        #my $i = 0;
+        #for my $v (@{$$data{$_}}) {
+            #print "$i: $v\n";
+            #$i++;
+        #}
+        #exit;
+    #}
+
     #dd $data;
     #exit;
     
@@ -789,7 +800,11 @@ sub format_output {
         my ($calc_filter_width, $calc_cds_width, $calc_aa_width, $calc_func_width) = (0)x4;
         ($calc_filter_width) = field_width($data, [4]) unless $nocall;
         if ($annots) {
-            ($calc_cds_width, $calc_aa_width, $calc_func_width) = field_width($data, [12,13,15]); 
+            # Need to figure out the index positions of cds, aa, and func,
+            # depending on whether we have a cfDNA assay or not.
+            my @i;
+            ($cfdna) ? (@i = [13,14,16]) : (@i = [12,13,15]);
+            ($calc_cds_width, $calc_aa_width, $calc_func_width) = field_width($data, @i);
         }
 
         # Use calculated values unless defaults are bigger.
@@ -853,7 +868,6 @@ sub format_output {
             ($nocall) 
                 ? (@output_data = @{$$data{$variant}}[0,1,2,5..18]) 
                 : (@output_data = @{$$data{$variant}});
-
             # Fill in undef slots with NULL
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
             printf $format_string, @output_data;
