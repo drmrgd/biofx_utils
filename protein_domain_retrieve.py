@@ -21,6 +21,9 @@ version = '0.2.121517'
 
 def get_args():
     parser = argparse.ArgumentParser(description = __doc__)
+    parser.add_argument('build_db', 
+        help='Build a protein mapping database from EMBL for future annotation.'
+            'Will output to a JSON file containing the date.')
     parser.add_argument('-g', '--gene', metavar='<gene1,gene2,gene3...>', 
         help='Comma separated list of gene(s) to look up.')
     parser.add_argument('-f', '--file', metavar='<batchfile>', 
@@ -98,13 +101,14 @@ def main(gene_list, outfh):
         query = {
             'categories' : 'DOMAINS_AND_SITES',
         }
-        results[gene] = api_call(url, query)
+        pp(api_call(url, query))
+        #results[gene] = api_call(url, query)
 
     outfile = 'protein_domain_mapping.json'
     sys.stdout.write('Writing results to %s...\n' % outfile)
     sys.stdout.flush()
     with open(outfile, 'w') as outfh:
-        json.dump(results, outfh)
+        json.dump(results, outfh, indent=4)
     sys.stdout.write('Done!\n')
 
 
