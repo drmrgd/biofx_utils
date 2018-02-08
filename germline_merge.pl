@@ -4,7 +4,6 @@
 #
 # TODO:
 #    - Add some output formatting options, including TSV / PP options.
-#    - Add flagging for ND variants and ones with VAFs that are too different?
 #    - Add filtering to pull up update only by position, gene, ID, etc. Can 
 #      leverage vcfExtractor filters to limit data if need be.
 #    - Add dbSNP annotations?
@@ -23,7 +22,9 @@ use Data::Dump;
 use Sort::Versions;
 
 my $scriptname = basename($0);
-my $version = "v0.2.120717";
+my $version = "v0.3.012918";
+my $vaf_diff = 20;
+
 my $description = <<"EOT";
 Input a blood VCF and a tumor VCF, and get a comparison table of VAFs between the two.
 May be helpful for determining which variants are somatic and which are germline.
@@ -34,6 +35,7 @@ USAGE: $scriptname [options]
     -b, --blood     Blood VCF to be processed.
     -t, --tumor     Tumor VCF to be processed.
 
+    -d, --diff      VAF difference (as an INT) threshold for annotation (default: $vaf_diff%).
     -o, --output    Send output to custom file.  Default is STDOUT.
     -v, --version   Version information
     -h, --help      Print this help information
@@ -48,6 +50,7 @@ my $tumor_vcf;
 GetOptions( 
     "blood|b=s"     => \$blood_vcf,
     "tumor|t=s"     => \$tumor_vcf,
+    "diff|d=i"      => \$vaf_diff,
     "output|o=s"    => \$outfile,
     "version|v"     => \$ver_info,
     "help|h"        => \$help )
@@ -104,7 +107,35 @@ my $blood_data = parse_vcf($blood_vcf);
 my $tumor_data = parse_vcf($tumor_vcf);
 my $married_data = marry_results($blood_data, $tumor_data);
 
+# Add blood only, tumor only, etc annotations to data.
+find_uniq($married_data);
+
 print_results($married_data, $out_fh);
+
+sub find_uniq {
+    # Read the married results in, and determine if each variant is germline (i.e.
+    # the same call and roughly the same VAF (+/- 5% VAF), or if only in tumor. 
+    # Also flag variants that are in blood only, which is probably indicative of 
+    # artifact.
+    my $data = shift;
+    my %results;
+
+    for my $var (keys %$data) {
+        my ($bvaf, $tvaf) = @{$$data{$var}}[3..4];
+        if ($bvaf eq 'ND') {
+            splice(@{$$data{$var}}, 5, 0, 'Tumor Only');
+        }
+        elsif ($tvaf eq 'ND') {
+            splice(@{$$data{$var}}, 5, 0, 'Blood Only');
+        }
+        elsif (abs($bvaf - $tvaf) > $vaf_diff) {
+            splice(@{$$data{$var}}, 5, 0, 'Diff');
+        } else {
+            splice(@{$$data{$var}}, 5, 0, '-');
+        }
+    }
+    return;
+}
 
 sub parse_vcf {
     my $vcf = shift;
@@ -158,8 +189,8 @@ sub marry_results {
 
 sub print_results {
     my ($data, $outfh) = @_;
-    my @header = qw(Position REF ALT Blood_VAF Tumor_VAF Transcript Gene CDS AA
-        VarID Location Function);
+    my @header = qw(Position REF ALT Blood_VAF Tumor_VAF Annot Transcript Gene 
+        CDS AA VarID Location Function);
     select $outfh;
     print join(',', @header), "\n";
     for my $var (sort {versioncmp($a, $b)} keys %$data) {
