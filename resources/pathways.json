@@ -1,7 +1,7 @@
 {
     "file_info" : {
-        "version" : "2.1",
-        "date" : "2/8/2018",
+        "version" : "2.2",
+        "date" : "2/12/2018",
         "description" : "Canonical pathways in cancer mapped to genes"
     },
     "PI3K/AKT1/MTOR": [
@@ -64,6 +64,7 @@
         "CCND1",
         "CCND2",
         "CCND3",
+        "CDH1",
         "CDK1",
         "CDK2",
         "CDK3",
@@ -337,32 +338,33 @@
         "MITF"
     ],
     "Transcriptional Regulation" : [
-    "CREBBP",
-    "ERG",
-    "ETV1",
-    "ETV4",
-    "ETV5",
-    "EZH2",
-    "FOXL2",
-    "GATA2",
-    "HNF1A",
-    "MAX",
-    "MED12",
-    "MYB",
-    "MYBL1",
-    "MYC",
-    "MYCL",
-    "MYCN",
-    "NFE2L2",
-    "PPARG",
-    "SMAD4",
-    "SPOP",
-    "STAT3"
+        "CREBBP",
+        "ERG",
+        "ETV1",
+        "ETV4",
+        "ETV5",
+        "EZH2",
+        "FOXL2",
+        "GATA2",
+        "GATA3",
+        "HNF1A",
+        "MAX",
+        "MED12",
+        "MYB",
+        "MYBL1",
+        "MYC",
+        "MYCL",
+        "MYCN",
+        "NFE2L2",
+        "PPARG",
+        "SMAD4",
+        "SPOP",
+        "STAT3"
     ],
     "RHO GTPase Signaling" : [
-        "NF2",
+        "AR",
         "KDR",
-        "AR"
+        "NF2"
     ],
     "Nonsense-Mediated Decay" : [
         "MAGOH"
@@ -372,16 +374,16 @@
         "AR"
     ],
     "NOTCH Signaling" : [
+        "FBXW7",
         "NOTCH1",
         "NOTCH2",
         "NOTCH3",
-        "NOTCH4",
-        "FBXW7"
+        "NOTCH4"
     ],
     "GPCR Signaling" : [
-        "RHOA",
         "KDR",
-        "RAC1"
+        "RAC1",
+        "RHOA"
     ], 
     "RNA Splicing" : [
         "SF3B1",
@@ -389,9 +391,10 @@
     ],
     "Other" : [
         "ARID1A",
-        "XPO1",
         "H3F3A",
         "KNSTRN",
-        "TOP1"
+        "TOP1",
+        "VHL",
+        "XPO1"
     ]
 }
