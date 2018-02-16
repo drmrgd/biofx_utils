@@ -12,7 +12,7 @@ import csv
 from pprint import pprint as pp
 from collections import defaultdict
 
-version = '1.0.020818'
+version = '1.1.021618'
 sys_json = os.path.join(os.path.dirname(__file__), 'resources', 'pathways.json')
 
 def get_args():
@@ -95,9 +95,9 @@ def main(gene, pathway, jfile, outfile):
     if outfile:
         sys.stderr.write('Writing output to {}.\n'.format(outfile))
         outfh = open(outfile, 'w')
-        csv_out = csv.writer(outfh)
+        csv_out = csv.writer(outfh, lineterminator=os.linesep)
     else:
-        csv_out = csv.writer(sys.stdout)
+        csv_out = csv.writer(sys.stdout, lineterminator=os.linesep)
 
     print_results(results, csv_out)
 
