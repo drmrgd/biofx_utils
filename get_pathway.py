@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Get pathway(s) for a given gene, or output a set of genes for a given pathway (
-which is a bit tricky).
+Get pathway(s) for a given gene, or output a set of genes for a given pathway.
 """
 import sys
 import os
@@ -31,6 +30,11 @@ def get_args():
     parser.add_argument('-v', '--version', action='version', version='prog(s) - '
         'v' + version)
     args = parser.parse_args()
+
+    if not any(x for x in (args.gene, args.pathway)):
+        sys.stderr.write('ERROR: You must input either a gene or pathway to '
+            'query!\n')
+        sys.exit(1)
     return args
 
 def parse_json(jfile):
