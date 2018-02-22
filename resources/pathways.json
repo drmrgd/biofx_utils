@@ -1,6 +1,6 @@
 {
     "file_info" : {
-        "version" : "2.2",
+        "version" : "2.3",
         "date" : "2/12/2018",
         "description" : "Canonical pathways in cancer mapped to genes"
     },
@@ -38,7 +38,9 @@
         "MAP2K2",
         "MAP2K4",
         "MAP3K1",
+        "NF1",
         "NRAS",
+        "PTPN11",
         "PPP2R1A",
         "RAC1",
         "RAF1",
@@ -121,7 +123,6 @@
         "IGF1R",
         "KIT",
         "MET",
-        "NF1",
         "NTRK1",
         "NTRK2",
         "NTRK3",
