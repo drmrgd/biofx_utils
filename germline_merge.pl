@@ -22,7 +22,7 @@ use Data::Dump;
 use Sort::Versions;
 
 my $scriptname = basename($0);
-my $version = "v0.3.012918";
+my $version = "v0.4.030118";
 my $vaf_diff = 20;
 
 my $description = <<"EOT";
@@ -121,17 +121,17 @@ sub find_uniq {
     my %results;
 
     for my $var (keys %$data) {
-        my ($bvaf, $tvaf) = @{$$data{$var}}[3..4];
+        my ($bvaf, $tvaf) = @{$$data{$var}}[3,5];
         if ($bvaf eq 'ND') {
-            splice(@{$$data{$var}}, 5, 0, 'Tumor Only');
+            splice(@{$$data{$var}}, 7, 0, 'Tumor Only');
         }
         elsif ($tvaf eq 'ND') {
-            splice(@{$$data{$var}}, 5, 0, 'Blood Only');
+            splice(@{$$data{$var}}, 7, 0, 'Blood Only');
         }
         elsif (abs($bvaf - $tvaf) > $vaf_diff) {
-            splice(@{$$data{$var}}, 5, 0, 'Diff');
+            splice(@{$$data{$var}}, 7, 0, 'Diff');
         } else {
-            splice(@{$$data{$var}}, 5, 0, '-');
+            splice(@{$$data{$var}}, 7, 0, '-');
         }
     }
     return;
@@ -159,7 +159,7 @@ sub parse_vcf {
 sub marry_results {
     my ($blood_data, $tumor_data) = @_;
     my %married_data;
-    my @wanted = qw(position ref alt vaf transcript gene cds aa varid location 
+    my @wanted = qw(position ref alt vaf cov transcript gene cds aa varid location 
         function);
         
     # Work with data in context of tumor, and then got back to verify we didn't
@@ -167,9 +167,9 @@ sub marry_results {
     for my $pos (keys %$tumor_data) {
         my @outdata = @{$$tumor_data{$pos}}{@wanted};
         if ($blood_data->{$pos}) {
-            splice(@outdata, 3, 0, @{$$blood_data{$pos}}{'vaf'});
+            splice(@outdata, 3, 0, @{$$blood_data{$pos}}{'vaf'}, @{$$blood_data{$pos}}{'cov'});
         } else {
-            splice(@outdata, 3, 0, 'ND');
+            splice(@outdata, 3, 0, 'ND', 'ND');
         }
         $married_data{$pos} = \@outdata;
     }
@@ -180,7 +180,7 @@ sub marry_results {
     if (@missing) {
         for my $pos (@missing) {
             my @outdata = @{$$blood_data{$pos}}{@wanted};
-            splice(@outdata, 4, 0, 'ND');
+            splice(@outdata, 5, 0, 'ND', 'ND');
             $married_data{$pos} = \@outdata;
         }
     }
@@ -189,7 +189,7 @@ sub marry_results {
 
 sub print_results {
     my ($data, $outfh) = @_;
-    my @header = qw(Position REF ALT Blood_VAF Tumor_VAF Annot Transcript Gene 
+    my @header = qw(Position REF ALT Blood_VAF Blood_Cov Tumor_VAF Tumor_Cov Annot Transcript Gene 
         CDS AA VarID Location Function);
     select $outfh;
     print join(',', @header), "\n";
