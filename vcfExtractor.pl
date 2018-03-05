@@ -1,12 +1,14 @@
 #!/usr/bin/perl
-# Script to parse Ion Torrent VCF files and output columnar information.  Can also filter based
-# on several different criteria.  Designed to work with TVC v4.0+ VCF files.
+# Script to parse Ion Torrent VCF files and output columnar information.  Can 
+# also filter based on several different criteria.  Designed to work with TVC 
+# v4.0+ VCF files.
 # 
 # D Sims 2/21/2013
-#################################################################################################
+################################################################################
 use warnings;
 use strict;
 use autodie;
+use feature 'state';
 
 use Getopt::Long qw( :config bundling auto_abbrev no_ignore_case );
 use List::Util qw( sum min max );
@@ -15,83 +17,100 @@ use JSON::XS;
 use Data::Dump;
 use File::Basename;
 use Term::ANSIColor;
+use IPC::Run qw(run);
+use Cwd qw(abs_path);
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.18.012618";
+my $version = "v7.19.030518";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
-print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 'bold yellow on_black'), "\n";
+print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
+    'bold yellow on_black'), "\n";
 print colored("*" x 75, 'bold yellow on_black'), "\n\n"; 
 
 my $description = <<"EOT";
-Parse an Ion Torrent or Ion Reporter VCF file. By default, this program will output 
-a simple table in the following format:
+Parse an Ion Torrent or Ion Reporter VCF file. By default, this program will
+output a simple table in the following format:
 
      CHROM:POS REF ALT Filter Filter_Reason VAF TotCov RefCov AltCov COSID
 
-However, using the '-a' option, we can add Ion Reporter (IR) annotations, including
-OVAR annotation, to the output, assuming the data was run through IR.  
+However, using the '-a' option, we can add Ion Reporter (IR) annotations, 
+including OVAT annotation, to the output, assuming the data was run through IR.
 
-In addition to simple output, we can also filter the data based on teh following criteria:
+In addition to simple output, we can also filter the data based on the 
+following criteria:
     - Non-reference calls can be omitted with '-n' option.
     - NOCALL variants can removed with the '-N' option.
     - Only calls with Hotspot IDs can be output with '-i' option.
     - Only calls with an OVAT annotation can be output with '-O' option..
-    - Calls matching a specific gene or genes can be acquired with the '-g' option.
-    - Calls matching a specific Hotspot ID can be acquired with the '-c' option.
+    - Calls matching a specific gene or genes can be acquired with the '-g' 
+      option.
+    - Calls matching a specific Hotspot ID can be acquired with the '-c' 
+      option.
     
-This program has also been updated to include parsing of TaqSeq based cfDNA assay
-results, and in addition to the LOD metric, outputs amplicon coverage as TotalCov, 
-with the rest of the coverage being derived from Molecular Family data.
+This program has also been updated to include parsing of TaqSeq based cfDNA 
+assay results, and in addition to the LOD metric, outputs amplicon coverage as
+TotalCov, with the rest of the coverage being derived from Molecular Family 
+data.
 
-This program can also output variants that match a position query based on using
-the following string: 
+This program can also output variants that match a position query based on 
+using the following string: 
     chr#:position. 
-If a position is not quite known or we are dealing with a 0 vs 1 based position 
-rule, we can perform a fuzzy lookup by using the '-f' option and the number of 
-right-most digits in the position that we are unsure of (e.g. -f1 => 1234*, 
--f2 => 123**).
+If a position is not quite known or we are dealing with a 0 vs 1 based 
+position rule, we can perform a fuzzy lookup by using the '-f' option and the 
+number of right-most digits in the position that we are unsure of (e.g. 
+-f1 => 1234*, -f2 => 123**).
 
 We can also use batch files to lookup multiple positions or hotspots using 
 the '-l' option.  
 
         vcfExtractor -l lookup_file <vcf_file>
 
-In addition to the Perl modules, Sort::Versions, JSON::XS, and Term::ANSIcolor, 
+In addition to the Perl modules, Sort::Versions, JSON::XS, and Term::ANSIcolor,
 which may not be standard in your distribution, the program will require the
-vcftools ('vcftools.sourceforge.net') package to be installed and in your \$PATH.
+vcftools ('vcftools.sourceforge.net') package to be installed and in your 
+\$PATH.
 EOT
 
 my $usage = <<"EOT";
 USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
 
     Program Options
-    -a, --annot     Add IR and Oncomine OVAT annotation information to output if available.
+    -a, --annot     Add IR and Oncomine OVAT annotation information to output 
+                    if available.
     -V, --Verbose   Print additional information during processing.
-    -c, --cfdna     Data is from a cfDNA run, and some metrics and thresholds will be different.
+    -c, --cfdna     Data is from a cfDNA run, and some metrics and thresholds 
+                    will be different.
     -o, --output    Send output to custom file.  Default is STDOUT.
     -v, --version   Version information
     -h, --help      Print this help information
 
     Filter and Output Options
-    -p, --pos       Output only variants at this position.  Format is "chr<x>:######" 
-    -i, --id        Look for variant with matching variant ID (COSMIC ID or other Hotspot ID)
-    -g, --gene      Filter variant calls by gene id. Can input a single value or comma 
+    -p, --pos       Output only variants at this position.  Format is 
+                    "chr<x>:######" 
+    -i, --id        Look for variant with matching variant ID (COSMIC ID or 
+                    other Hotspot ID)
+    -g, --gene      Filter variant calls by gene id. Can input a single value 
+                    or comma 
                     separated list of gene ids to query. Can only be used with 
-                    the '--annot' option as the annotations have to come from IR.
-    -l, --lookup    Read a list of search terms from a file to query the VCF. Note that you will 
-                    not have to use the '-p', '-g', or '-i' option (for example) when using this 
-                    option as the type will automatically be detected from the file. Also note that 
-                    just like the other options, mixed query types is not supported and will result
-                    in an error.
-    -f, --fuzzy     Less precise (fuzzy) position match. Strip off n digits from the position string.
-                    MUST be used with a query option (e.g. -p, -c, -l), and can not trim more than 3 
-                    digits from string.
+                    the '--annot' option as the annotations have to come from 
+                    IR.
+    -l, --lookup    Read a list of search terms from a file to query the VCF.
+                    Note that you will not have to use the '-p', '-g', or '-i'
+                    option (for example) when using this option as the type 
+                    will automatically be detected from the file. Also note 
+                    that just like the other options, mixed query types is not
+                    supported and will result in an error.
+    -f, --fuzzy     Less precise (fuzzy) position match. Strip off n digits 
+                    from the position string. MUST be used with a query option
+                    (e.g. -p, -c, -l), and can not trim more than 3 digits from
+                    string.
     -n, --noref     Output reference calls.  Ref calls filtered out by default
     -N, --NOCALL    Remove 'NOCALL' entries from output
     -O, --OVAT      Only report Oncomine Annotated Variants.
-    -H, --HS        Print out only variants that have a Hotspot ID (NOT YET IMPLEMENTED).
+    -H, --HS        Print out only variants that have a Hotspot ID (NOT YET 
+                    IMPLEMENTED).
 EOT
 
 my $help;
@@ -212,10 +231,6 @@ if ( scalar( @ARGV ) < 1 ) {
     exit 1;
 }
 
-# TODO:
-# Overhaul this and clean it up a bit.  We're doing several different methods to 
-# set up the same list and this can be streamlined and made more clear.
-#
 # Parse the lookup file and add variants to the postions list if processing batch-wise
 my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV MAN );
 if ($lookup) {
@@ -294,7 +309,7 @@ if ( $outfile ) {
 } else {
 	$out_fh = \*STDOUT;
 }
-#########------------------------------ END Arg Parsing and validation ---------------------------------#########
+#########--------------- END Arg Parsing and validation ---------------#########
 my $input_vcf = shift;
 
 # Check VCF file and options to make sure they're valid
@@ -365,11 +380,6 @@ my %vcf_data = parse_data( \@extracted_data );
 
 # Filter parsed data.
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
-#dd $filtered_vcf_data;
-#for (keys %$filtered_vcf_data) {
-    #printf "%s: %s\n", $_, scalar(@{$$filtered_vcf_data{$_}});
-#}
-#__exit__(__LINE__,'');
 
 # Finally print it all out.
 format_output($filtered_vcf_data, \%vcf_filters);
@@ -386,14 +396,12 @@ sub parse_data {
     my %parsed_data;
 
     for ( @$data ) {
-        # Don't know why, but we need a newline char for format, which needs to be removed 
-        # here for processing.
         chomp;
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, 
             $omapalt, $func, $lod, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
 
-        # Limit processing to just one position and output more metrics so that we
-        # can figure out what's going on.
+        # Limit processing to just one position and output more metrics so that
+        # we can figure out what's going on.
         if ($debug_pos) {
             next unless $pos eq $debug_pos;
             print_debug_output([split(/\t/)]);
@@ -411,7 +419,7 @@ sub parse_data {
         next if ( $nocall && $filter eq "NOCALL" );
         next if ( $noref && $gtr eq '0/0' );
 
-        # Create some arrays to hold the variant data in case we have MNP calls here
+        # Create some arrays to hold the variant data in case we have MNP calls
         my @alt_array     = split( /,/, $alt );
         my @oid_array     = split( /,/, $oid );
         my @opos_array    = split( /,/, $opos );
@@ -532,22 +540,31 @@ sub get_ovat_annot {
     # If this is IR VCF, add in the OVAT annotation. 
     my ($func, $norm_data) = @_;
     my %data;
-    my @wanted_elems = qw(oncomineGeneClass oncomineVariantClass gene transcript 
-        protein coding function normalizedRef normalizedAlt location exon);
+    my @wanted_elems = qw(oncomineGeneClass oncomineVariantClass gene 
+        transcript protein coding function normalizedRef normalizedAlt 
+        location exon);
 
     $$func =~ tr/'/"/;
     my $json_annot = JSON::XS->new->decode($$func);
+    
 
     for my $func_block ( @$json_annot ) {
-        # If there is "normalized" data, then we got a positive variant call; map the 
-        # appropriate elems.  If not, then likely ref call, and map what you can, fill
-        # in the rest later.
-        #
-        # Try adding a normalized pos mapping too; seems there can be some disconnect here if not.
-        #
-        # For cfDNA Panel, if there are two hits at the same locus, we might only get one FUNC entry (
-        # presumably the other hit is filtered out?), and in this case we only get one set of annots. But,
-        # if this passes downstream to other scripts, the wrong variant can be used.  
+        # For TVC versions <5.8 (maybe going to be 5.10?), if there are two hits
+        # at the same locus, we only get one FUNC entry since TVC is not 
+        # configured to call mulit-alleles, and in this case we only get one 
+        # set of annots. 
+        # XXX
+        # In some cases, overlapping transcripts / genes can induce multiple 
+        # FUNC block entries, which makes things really mess. Skip over any FUNC
+        # block entry that does not have the correct transcript ID based on out
+        # canonical transcript list.
+        my $can_tran = get_can_tran($func_block->{'gene'});
+        next if $can_tran eq 'None' or $can_tran ne $func_block->{'transcript'};
+
+
+        # If there is "normalized" data, then we got a positive variant call; 
+        # map the appropriate elems.  If not, then likely ref call, and map 
+        # what you can, fill in the rest later.
         if ($$func_block{'normalizedRef'}) {
             if ($$func_block{'normalizedRef'} eq $$norm_data{'normalizedRef'} 
                 && $$func_block{'normalizedAlt'} eq $$norm_data{'normalizedAlt'}
@@ -555,13 +572,16 @@ sub get_ovat_annot {
                 %data = %$func_block;
                 last;
             } else {
-                @data{qw(gene transcript location exon)} = @{$func_block}{qw(gene transcript location exon)};
+                @data{qw(gene transcript location exon)} = 
+                    @{$func_block}{qw(gene transcript location exon)};
             }
         } 
         else {
             @data{@wanted_elems} = @{$func_block}{@wanted_elems};
         }
     }
+
+    exit;
 
     #TODO : remove this.
     #print "post mapping data: \n";
@@ -586,14 +606,14 @@ sub get_ovat_annot {
         $location = $data{'location'};
     }
 
-    # Sometimes, for reasons I'm not quite sure of, there can be an array for the 
-    # functional annotation.  I think it's safe to take the most severe of the 
-    # list and to use.  
+    # Sometimes, for reasons I'm not quite sure of, there can be an array for 
+    # the functional annotation in each func block entry.  I think it's safe to
+    # take the most severe of the list and to use.  
 
-    # TODO: Refine this.  I can't figure out when and in what context we get this multiple function annotations bit.
-    #       So, for now, let's just print them all out and see what the trend looks like, and the figure it out from
-    #       there.  
-    #($function) = grep {/(missense|nonsense)/} @$function if ref $function eq 'ARRAY';
+    # TODO: Refine this.  I can't figure out when and in what context we get 
+    # this multiple function annotations bit. So, for now, let's just print 
+    # them all out and see what the trend looks like, and the figure it out 
+    # from there.  
     ($function) = join('|', @$function) if ref $function eq 'ARRAY';
 
     if (DEBUG) {
@@ -944,10 +964,36 @@ sub print_debug_output {
     print '='x59, "\n";
 }
 
+sub get_can_tran {
+    # IR Annotation can get strange with overlapping genes. Figure out the 
+    # canonical transcript for filtering, based on transcript list in resources
+    # dir in the current package.
+    my $gene = shift;
+    my $tscript_file = abs_path(dirname($0)) . '/resources/refseq.txt';
+    die "Error: Can not find the canonical transcript file!\n" 
+        unless -f $tscript_file;
+
+    # Use 'state' variable feature to prevent us reinitializing the hash every
+    # single time we want to do a look up, while still allowing us to scope this
+    # only when really needed (i.e. not if we don't have an IR file).
+    state %tscript_ids;
+    %tscript_ids = do {
+        open(my $fh, "<", $tscript_file);
+        map{ chomp; split("\t") } <$fh>;
+    } if not %tscript_ids;
+
+    if ($tscript_ids{$gene}) {
+        return $tscript_ids{$gene};
+    } else {
+        return 'None';
+    }
+}
+
 sub __exit__ {
     my ($line, $msg) = @_;
     print "\n\n";
-    print colored("Got exit message at line $line with message: $msg", 'bold white on_green');
+    print colored("Got exit message at line $line with message: $msg", 
+        'bold white on_green');
     print "\n";
     exit;
 }
