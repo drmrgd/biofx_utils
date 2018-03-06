@@ -22,7 +22,7 @@ use Cwd qw(abs_path);
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.20.030618";
+my $version = "v7.21.030618";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -636,12 +636,13 @@ sub get_ovat_annot {
 
     for my $func_block ( @$json_annot ) {
         # In some cases, overlapping transcripts / genes can induce multiple 
-        # FUNC block entries, which makes things really mess. Skip over any FUNC
-        # block entry that does not have the correct transcript ID based on out
+        # FUNC block entries, which makes things a mess. Skip over any FUNC
+        # block entry that does not have the correct transcript ID based on our
         # canonical transcript list.
         my $can_tran = get_can_tran($func_block->{'gene'});
 
-        # FIXME: Sometimes getting a uninit value here.
+        # No transcript ID in FUNC block on occassion for some reason  
+        $func_block->{'transcript'} //= 'None';
         next if $can_tran eq 'None' or $can_tran ne $func_block->{'transcript'};
 
         # TODO:
