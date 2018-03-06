@@ -22,7 +22,7 @@ use Cwd qw(abs_path);
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.19.030518";
+my $version = "v7.20.030618";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -181,21 +181,23 @@ if ( ! qx(which vcftools) ) {
     exit 1;
 }
 
-# Double check that fuzzy option is combined intelligently with a position lookup.
-#if ( $fuzzy ) {
+# Double check that fuzzy option is combined intelligently with a position 
+# lookup.
 if ( $fuzzy) {
     if ( $fuzzy > 3 ) {
-        print "\n$err Can not trim more than 3 digits from the query string.\n\n";
+        print "\n$err Can not trim more than 3 digits from the query string.\n";
         exit 1;
     }
     elsif ( $lookup ) {
-        print "\n$warn fuzzy lookup in batch mode may produce a lot of results! Continue? ";
+        print "\n$warn fuzzy lookup in batch mode may produce a lot of ",
+            "results! Continue? ";
         chomp( my $response = <STDIN> );
         exit if ( $response =~ /[(n|no)]/i );
         print "\n";
     }
     elsif ( ! $positions && ! $hsids ) {
-        print "$err must include position or hotspot ID query with the '-f' option\n\n";
+        print "$err must include position or hotspot ID query with the '-f' ",
+            "option\n\n";
         print $usage;
         exit 1;
     }
@@ -204,9 +206,9 @@ if ( $fuzzy) {
 # Throw a warning if using the ovat filter without asking for OVAT annotations.
 if ( $ovat_filter ) {
     if ($cfdna) {
-        die "$err Can no combine the cfDNA option with the OVAT option at this time ",
-            "as it would seem that OVAT is not yet supported by \nthe pipeline. This ",
-            "might be added as a feature later on.\n";
+        die "$err Can no combine the cfDNA option with the OVAT option at ",
+            "this time as it would seem that OVAT is not yet supported by\n",
+            "the pipeline. This might be added as a feature later on.\n";
     }
     elsif ( ! $annots ) {
     print "$info Requested Oncomine annotation filter without adding the OVAT ",
@@ -231,11 +233,14 @@ if ( scalar( @ARGV ) < 1 ) {
     exit 1;
 }
 
-# Parse the lookup file and add variants to the postions list if processing batch-wise
-my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV MAN );
+# Parse the lookup file and add variants to the postions list if processing 
+# batch-wise
+my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV 
+    MAN );
 if ($lookup) {
     if ($positions or $hsids) {
-        print "$err You can not use individual filters with the lookup file option.\n";
+        print "$err You can not use individual filters with the lookup file ",
+            "option.\n";
         exit 1;
     }
 
@@ -259,8 +264,8 @@ if ( $positions ) {
     @coords = split( /\s+/, $positions );
     for my $coord ( @coords ) {
         if ( $coord !~ /\Achr[0-9YX]+:\d+$/i ) {
-            print "$err '$coord' not valid. Please use the following format for ",
-                "position queries: 'chr#:position'\n";
+            print "$err '$coord' not valid. Please use the following format ",
+                "for position queries: 'chr#:position'\n";
             exit 1;
         }
     }
@@ -268,15 +273,17 @@ if ( $positions ) {
 } 
 elsif ( $hsids ) {
     if ($cfdna) {
-        print "You can not use HS lookup with the cfDNA option at this time since ",
-            "the variant ID is an amino acid sequence and difficult\nto work with.\n";
+        print "You can not use HS lookup with the cfDNA option at this time ",
+            "since the variant ID is an amino acid sequence and difficult\n",
+            "to work with.\n";
         exit 1;
     }
     print "Checking variant id lookup...\n" if $verbose;
     @cosids = split( /\s+/, $hsids );
     for my $varid ( @cosids ) { 
         if ( ! grep { $varid =~ /$_\d+/ } @valid_hs_ids ) {
-            print "$err '$varid' is not a valid hotspot query term! Valid lookups are:\n";
+            print "$err '$varid' is not a valid hotspot query term! Valid ",
+                "lookups are:\n";
             print "\t${_}###\n" for @valid_hs_ids;
             exit;
         }
@@ -286,7 +293,8 @@ elsif ( $hsids ) {
 
 # Add gene list for query if we have one.
 if ($gene) {
-    die "$err Can not use the '--gene' option without the '--annot' option!\n" unless $annots;
+    die "$err Can not use the '--gene' option without the '--annot' ",
+        "option!\n" unless $annots;
     push(@filter_list, 'gene');
 }
 my @query_genes = map{ uc $_ } split(/,/,$gene) if $gene;
@@ -315,51 +323,58 @@ my $input_vcf = shift;
 # Check VCF file and options to make sure they're valid
 open ( my $vcf_fh, "<", $input_vcf);
 my @header = grep { /^#/ } <$vcf_fh>;
-die "$err '$input_vcf' does not appear to be a valid VCF file or does not have a 
-    header.\n" unless @header;
+die "$err '$input_vcf' does not appear to be a valid VCF file or does not ",
+    "have a header.\n" unless @header;
 close $vcf_fh;
 
 # Crude check for TVC3.2 or TVC4.0+ VCF file.  Still need to refine this
 if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
-    print "$warn '$input_vcf' appears to be from TVCv3.2, and the 'tvc32' option 
-        was not selected.  The file may not be processed correctly.\n";
+    print "$warn '$input_vcf' appears to be from TVCv3.2, and the 'tvc32' ",
+    "option was not selected.  The file may not be processed correctly.\n";
     die "Pre TVCv4.0 VCF file detected. These files are not longer supported 
         by this utility\n";
 }
 
 # Trigger IR / OVAT annot capture if available
 my ($ir_annot,$ovat_annot);
-( grep { /OncomineVariantAnnotation/ } @header ) ? ($ovat_annot = 1) : ($ovat_annot = 0);
-( grep { /IonReporterExportVersion/ } @header ) ? ($ir_annot = 1) : ($ir_annot = 0);
+( grep { /OncomineVariantAnnotation/ } @header ) 
+    ? ($ovat_annot = 1) 
+    : ($ovat_annot = 0);
+
+( grep { /IonReporterExportVersion/ } @header ) 
+    ? ($ir_annot = 1) 
+    : ($ir_annot = 0);
 
 if ( $annots && $ir_annot == 0 ) {
-    die "$err IR output selected, but VCF does not appear to have been run through IR!\n";
+    die "$err IR output selected, but VCF does not appear to have been run ",
+    "through IR!\n";
 }
 
 # Figure out if these are cfDNA files to help with downstream options.
 if (grep { /^##INFO=<ID=LOD/ } @header) {
         if (! $cfdna) {
-            print "$err You appear to be running a VCF derived from the taqseq ",
+            print "$err You appear to be running a VCF derived from a taqseq ",
                 "cfDNA panel, but have not set the --cfdna option.\n";
             exit 1
         }
         elsif ($ovat_filter) {
-            print "$err OVAT filtered output selected, but VCF appears to have been run ",
-                "through the TagSeq cfDNA pipeline, and and there is no OVAT annotation\n",
-                "available at this time!\n";
+            print "$err OVAT filtered output selected, but VCF appears to have",
+            " been run through the TagSeq cfDNA pipeline, and and there is no ",
+            "OVAT annotation\navailable at this time!\n";
             exit 1;
         }
 } else {
     if ($cfdna) {
-        print "$err cfDNA option (--cfdna) selected, but VCF does not appear to be ", 
-            "from a cfDNA run!\n";
+        print "$err cfDNA option (--cfdna) selected, but VCF does not appear ",
+        "to be from a cfDNA run!\n";
         exit 1; 
     }
 }
 
 # Get the data from VCF Tools
-my @wanted_fields = qw(%CHROM:%POS %REF %ALT %FILTER %INFO/FR %INFO/OID %INFO/OPOS 
-    %INFO/OREF %INFO/OALT %INFO/OMAPALT --- --- [%GTR %AF %FRO %RO %FAO %AO %DP]);
+my @wanted_fields = qw(%CHROM:%POS %REF %ALT %FILTER %INFO/FR %INFO/OID 
+    %INFO/OPOS %INFO/OREF %INFO/OALT %INFO/OMAPALT --- --- [%GTR %AF %FRO %RO 
+    %FAO %AO %DP]);
 
 if ($annots) {
     $wanted_fields[10] = '%INFO/FUNC';
@@ -379,6 +394,8 @@ my @extracted_data = qx( vcf-query $input_vcf -f "$vcf_format\n" );
 my %vcf_data = parse_data( \@extracted_data );
 
 # Filter parsed data.
+# TODO: Add back in. For now, filters are breaking my debugging.
+#my $filtered_vcf_data = \%vcf_data;
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
 
 # Finally print it all out.
@@ -392,13 +409,28 @@ if ( @warnings && $verbose ) {
 
 sub parse_data {
     # Extract the VCF information and create a hash of the data.  
+    # TODO: 
+    #     In very rare cases, when TVC and LIA make the same call and there
+    #     is a merge, if TVC is NOCALL'd, we should use the results from LIA.
+    #     This is currently implemented as of v8 of this script. However, there
+    #     can also be even rarer circumstances where the call in TVC is a 
+    #     hotspot, and the variant ID does not transfer to LIA. In this case we
+    #     should keep the ID from TVC, toss the entry, and move the ID to the 
+    #     LIA call.  For now, not going to worry about it, since there are 
+    #     hardly any cases where I see this with our panel.
     my $data = shift;
     my %parsed_data;
 
     for ( @$data ) {
         chomp;
         my ( $pos, $ref, $alt, $filter, $reason, $oid, $opos, $oref, $oalt, 
-            $omapalt, $func, $lod, $gtr, $af, $fro, $ro, $fao, $ao, $dp ) = split( /\t/ );
+            $omapalt, $func, $lod, $gtr, $af, $fro, $ro, $fao, $ao, 
+            $dp ) = split( /\t/ );
+
+        # XXX DEBUG
+        ##next unless $pos =~ /^chr17:7578[47]/;
+        #next unless $pos =~ /^chr17:75771/;
+        #next unless $pos =~ /^chr3/;
 
         # Limit processing to just one position and output more metrics so that
         # we can figure out what's going on.
@@ -415,7 +447,8 @@ sub parse_data {
 
         # Filter out vars we don't want to print out later anyway.
         next if $reason eq "NODATA";
-        $filter = "NOCALL" if ( $gtr =~ m|\./\.| );
+        # Sometimes not getting correct 'NOCALL' flag; manually set if need to.
+        $filter = "NOCALL" if (($gtr =~ m|\./\.|) or ($reason eq 'REJECTION'));
         next if ( $nocall && $filter eq "NOCALL" );
         next if ( $noref && $gtr eq '0/0' );
 
@@ -431,25 +464,24 @@ sub parse_data {
         my @lod_array     = split( /,/, $lod );
 
         for my $alt_index ( 0..$#alt_array ) {
+
+            # NOTE: New vars for flagging.
+            my @var_data;
+            my $caller = 'tvc'; # set default as TVC and change later.
+
             my $alt_var = $alt_array[$alt_index];
 
-            # Get the normalizedRef, normalizedAlt, and normalizedPos values from 
-            # the REF and ALT fields so that we can map the FUNC block.
+            # Get the normalizedRef, normalizedAlt, and normalizedPos values
+            # from the REF and ALT fields so that we can map the FUNC block.
             my @coords = split(/:/, $pos);
             my %norm_data = normalize_variant(\$ref, \$alt_var, $coords[1]);
-
-            # TODO: Remove this.
-            #print('*'x90, "\n");
-            #print "==> ref var: $ref\n";
-            #print "==> alt var: $alt_var\n";
-            #printf "DEBUG: Normalized Data (%s/%s)\n", $alt_index+1,scalar(@alt_array);
-            #dd \%norm_data;
 
             my @array_pos = grep { $omapalt_array[$_] eq $alt_var } 0..$#omapalt_array;
             for my $index ( @array_pos ) {
                 (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$norm_data{'normalizedPos'}/; 
                 
-                my $var_id = join( ":", $parsed_pos, $oref_array[$index], $oalt_array[$index] );
+                my $var_id = join( ":", $parsed_pos, $oref_array[$index], 
+                    $oalt_array[$index] );
                 my $cosid = $oid_array[$index];
                 # Stupid bug with de novo and hotspot merge that can create two 
                 # duplicate entries for the same variant but one with and one 
@@ -460,7 +492,9 @@ sub parse_data {
                 }
 
                 # Start the var string.
-                push( @{$parsed_data{$var_id}},
+                # XXX
+                #push( @{$parsed_data{$var_id}},
+                push( @var_data,
                     $parsed_pos,
                     $norm_data{'normalizedRef'},
                     $norm_data{'normalizedAlt'},
@@ -468,69 +502,121 @@ sub parse_data {
                     $reason
                 );
 
-                # XXX
-                #dd \%parsed_data;
 
-                # Check to see if call is result of long indel assembler and handle appropriately. 
+                # Check to see if call is result of long indel assembler and 
+                # handle appropriately. 
                 my ($vaf, $tot_coverage);
                 if ( $fao_array[$alt_index] eq '.' ) {
+                    # Result is from LIA
+                    $caller = 'lia';
                     $tot_coverage = $ao_array[$alt_index] + $ro;
-                    $vaf = vaf_calc( \$filter, \$dp, \$ro, \$ao_array[$alt_index] );
-                    push(@{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, $ro,
-                        $ao_array[$alt_index], $cosid);
+                    $vaf = vaf_calc( \$filter, \$dp, \$ro, 
+                        \$ao_array[$alt_index] );
+                    
+                    # XXX
+                    #push(@{$parsed_data{$var_id}},$vaf, $lod_array[$alt_index],
+                    push(@var_data, $vaf, $lod_array[$alt_index],
+                        $tot_coverage, $ro, $ao_array[$alt_index], $cosid);
                 } else {
                     my @cleaned_fao_array = grep { $_ ne '.' } @fao_array;
                     $tot_coverage = sum( @cleaned_fao_array ) + $fro;
-                    $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, \$fao_array[$alt_index] );
-                    push( @{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index], $tot_coverage, 
-                        $fro, $fao_array[$alt_index], $cosid );
+                    $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, 
+                        \$fao_array[$alt_index] );
+                    
+                    # XXX
+                    #push(@{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index],
+                    push(@var_data, $vaf, $lod_array[$alt_index],
+                        $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
                 
-                # Filter out reference calls if we have turned on the noref filter. Have to leave the NOCALL 
-                # calls if we have left those in, and have to deal with sub 1% VAFs for cfDNA assay.
-                my $calc_vaf = ${$parsed_data{$var_id}}[5];
+                # Filter out reference calls if we have turned on the noref 
+                # filter. Have to leave the NOCALL calls if we have left those 
+                # in, and have to deal with sub 1% VAFs for cfDNA assay.
+                
+                # XXX
+                #my $calc_vaf = ${$parsed_data{$var_id}}[5];
+                my $calc_vaf = $var_data[5];
                 if ( $calc_vaf ne '.' ) {
                     if ($calc_vaf == 0) {
-                        delete $parsed_data{$var_id} and next if $noref;
+                        # XXX
+                        #delete $parsed_data{$var_id} and next if $noref;
+                        next if $noref;
                     }
                     elsif ($calc_vaf < 1) {
-                        delete $parsed_data{$var_id} and next if ! $cfdna; 
+                        # XXX
+                        #delete $parsed_data{$var_id} and next if ! $cfdna; 
+                        next if ! $cfdna; 
                     }
                 }
 
-                # Make some data changes for output if we have cfDNA and not conventional panel / assay.
+                # Make some data changes for output if we have cfDNA and not 
+                # conventional panel / assay.
                 if ($cfdna) {
-                    ${$parsed_data{$var_id}}[7] = $dp;
+                    # XXX
+                    #${$parsed_data{$var_id}}[7] = $dp;
+                    $var_data[7] = $dp;
                 }
                 else {
                     # We don't have cfDNA, so remove the LOD field from output.
-                    splice(@{$parsed_data{$var_id}}, 6, 1);
+                    # XXX
+                    #splice(@{$parsed_data{$var_id}}, 6, 1);
+                    splice(@var_data, 6, 1);
                 }
                 
-                # Grab the OVAT annotation information from the FUNC block if possible.
-                my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, $exon);
+                # Grab the OVAT annotation information from the FUNC block if 
+                # possible.
+                my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, 
+                    $protein, $function, $exon);
                 if ( $func eq '.' ) {
                     push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $annots;
                     $ovat_vc = $ovat_gc = $gene_name = "NULL";
                 } 
-                # XXX
                 else {
-                    ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, $protein, $function, 
-                        $exon) = get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
+                    ($ovat_gc, $ovat_vc, $gene_name, $transcript,$hgvs,$protein,
+                        $function, $exon) = 
+                        get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
                 }
 
-                # TODO:
-                # If we have multiple alleles per entry, especially in the case of the cfDNA panel where very
-                # low counts might come through, how can we handle this?  What if we get more than one func
-                # entry...is this being handled correctly?
+                # Now handle in two steps.  Add IR annots if there, and then 
+                # if wanted ovat annots, add them too.
+                
+                # XXX
+                #push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, 
+                    #$protein, $exon, $function) if $annots;
+                #push(@{$parsed_data{$var_id}}, $ovat_gc, 
+                    #$ovat_vc) if $annots and $ovat_annot;
+                push(@var_data, $gene_name, $transcript, $hgvs, $protein, $exon,
+                    $function) if $annots;
+                push(@var_data, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
 
-                # Now handle in two steps.  Add IR annots if there, and then if wanted ovat annots, add them too.
-                push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, $protein, $exon, $function) if $annots;
-                push(@{$parsed_data{$var_id}}, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
+                push(@var_data, $caller);
+
+                # Load data into hash.
+                #dd \@var_data;
+                
+                # Due to buggy merging between the TVC (i.e. flowspace) caller
+                # and the Long Indel Assembler (LIA) module, we can sometimes
+                # have two entries for the same variant.  We need to select the
+                # correct of the two, which is always TVC, unless TVC is NOCALL
+                # and LIA rescues.
+                
+                # TODO: Remove this.
+                #push(@{$parsed_data{$var_id}}, @var_data);
+                
+                if ($parsed_data{$var_id}) {
+                    # if data already there, check if it's from LIA and replace
+                    if (${$parsed_data{$var_id}}[-1] eq 'lia') {
+                        $parsed_data{$var_id} = \@var_data;
+                    }
+                } else {
+                    $parsed_data{$var_id} = \@var_data;
+                }
+
             }
         }
     }
     
+    # XXX
     #dd \%parsed_data;
     #__exit__(__LINE__, "Finsished parsing data and generating variant hash.");
     return %parsed_data;
@@ -549,17 +635,22 @@ sub get_ovat_annot {
     
 
     for my $func_block ( @$json_annot ) {
-        # For TVC versions <5.8 (maybe going to be 5.10?), if there are two hits
-        # at the same locus, we only get one FUNC entry since TVC is not 
-        # configured to call mulit-alleles, and in this case we only get one 
-        # set of annots. 
-        # XXX
         # In some cases, overlapping transcripts / genes can induce multiple 
         # FUNC block entries, which makes things really mess. Skip over any FUNC
         # block entry that does not have the correct transcript ID based on out
         # canonical transcript list.
         my $can_tran = get_can_tran($func_block->{'gene'});
+
+        # FIXME: Sometimes getting a uninit value here.
         next if $can_tran eq 'None' or $can_tran ne $func_block->{'transcript'};
+
+        # TODO:
+        # For TVC versions <5.8 (maybe going to be 5.10?), if there are two hits
+        # at the same locus, we only get one FUNC entry since TVC is not 
+        # configured to call mulit-alleles, and in this case we only get one 
+        # set of annots. Need to either skip over these other calls (use GT
+        # field to map), or output, without annotation (or try to build my
+        # own annotator!).
 
 
         # If there is "normalized" data, then we got a positive variant call; 
@@ -580,13 +671,6 @@ sub get_ovat_annot {
             @data{@wanted_elems} = @{$func_block}{@wanted_elems};
         }
     }
-
-    exit;
-
-    #TODO : remove this.
-    #print "post mapping data: \n";
-    #dd \%data;
-    #print('*'x90,"\n");
 
     my $gene_class    = $data{'oncomineGeneClass'}    // '---';
     my $variant_class = $data{'oncomineVariantClass'} // '---';
@@ -641,7 +725,8 @@ sub normalize_variant {
     my ($norm_ref, $norm_alt);
 
     my ($rev_ref, $rev_alt, $position_delta) = rev_and_trim($ref, $alt);
-    ($norm_ref, $norm_alt, $position_delta) = rev_and_trim(\$rev_ref, \$rev_alt);
+    ($norm_ref, $norm_alt, $position_delta) = rev_and_trim(\$rev_ref, 
+        \$rev_alt);
 
     my $adj_position = $position_delta + $pos;
     return ( 'normalizedRef' => $norm_ref, 'normalizedAlt' => $norm_alt, 
@@ -704,7 +789,8 @@ sub filter_data {
         ($noref) ? print "$off!\n" : print "$on.\n";
     }
     
-    # First run OVAT filter; no need to push big list of variants through other filters.
+    # First run OVAT filter; no need to push big list of variants through other 
+    # filters.
     $data = ovat_filter($data) if $ovat_filter;
     $data = hs_filtered($data) if $hotspots;
 
@@ -729,7 +815,7 @@ sub filter_data {
     } 
 
     # Now run filters
-    run_filter($selected_filters[0], \@{$$filter{$selected_filters[0]}}, $fuzzy, 
+    run_filter($selected_filters[0], \@{$$filter{$selected_filters[0]}}, $fuzzy,
         $data, \%filtered_data);
 
     return \%filtered_data;
@@ -752,8 +838,8 @@ sub run_filter {
     print "$info Running the $term filter...\n";
 
     for my $variant (keys %$data) {
-        # if we're running a fuzzy lookup, we need a regex match and have to do it a little
-        # differently
+        # if we're running a fuzzy lookup, we need a regex match and have to 
+        # do it a little differently
         if ($term eq 'Fuzzy') {
             if ( grep { $$data{$variant}[0] =~/$_.{$fuzzy}$/ } @$filter_vals ) {
                 @{$$results{$variant}} = @{$$data{$variant}};
@@ -790,7 +876,11 @@ sub hs_filtered {
 sub format_output {
     # Format and print out the results
     my ($data,$filter_list) = @_;
+    # ===> print <====
+    #dd $data;
+    #exit;
 
+    # DEBUG
     # Dump first entry for help in figuring out array indices
     #for (keys %$data) {
         #my $i = 0;
@@ -800,31 +890,33 @@ sub format_output {
         #}
         #exit;
     #}
-
     #dd $data;
     #exit;
     
     # Default starting values.
-    my $ref_width = 5;
-    my $alt_width = 5;
-    my $varid_width = 10;
+    my $ref_width    = 5;
+    my $alt_width    = 5;
+    my $varid_width  = 10;
     my $filter_width = 17;
-    my $cds_width = 7;
-    my $aa_width = 7;
-    my $func_width = 9;
+    my $cds_width    = 7;
+    my $aa_width     = 7;
+    my $func_width   = 9;
 
     if (%$data) {
-        my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = field_width($data, [1,2,9]);
+        my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = 
+            field_width($data, [1,2,9]);
 
         # Have to pre-declare and set to 0, else we will get warning when no opt
-        my ($calc_filter_width, $calc_cds_width, $calc_aa_width, $calc_func_width) = (0)x4;
+        my ($calc_filter_width, $calc_cds_width, $calc_aa_width, 
+            $calc_func_width) = (0)x4;
         ($calc_filter_width) = field_width($data, [4]) unless $nocall;
         if ($annots) {
             # Need to figure out the index positions of cds, aa, and func,
             # depending on whether we have a cfDNA assay or not.
             my @i;
             ($cfdna) ? (@i = [13,14,16]) : (@i = [12,13,15]);
-            ($calc_cds_width, $calc_aa_width, $calc_func_width) = field_width($data, @i);
+            ($calc_cds_width, $calc_aa_width, $calc_func_width) = 
+                field_width($data, @i);
         }
 
         # Use calculated values unless defaults are bigger.
@@ -871,7 +963,8 @@ sub format_output {
 
     if ($annots) {
         push(@header, qw(Gene Transcript CDS AA Location Function));
-        # Add OVAT annots and expand function column width if we have OVAT annots.
+        # Add OVAT annots and expand function column width if we have OVAT 
+        # annots.
         if ($ovat_annot) {
             push(@header, qw(oncomineGeneClass oncomineVariantClass));
         }
@@ -884,7 +977,8 @@ sub format_output {
     if (%$data) {
         my @output_data;
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
-            # if not outputting nocall, remove fields 3 and 4; always remove genotype field.
+            # if not outputting nocall, remove fields 3 and 4; always remove 
+            # genotype field.
             ($nocall) 
                 ? (@output_data = @{$$data{$variant}}[0,1,2,5..18]) 
                 : (@output_data = @{$$data{$variant}});
@@ -899,28 +993,33 @@ sub format_output {
             exit;
         }
         if (@{$$filter_list{'gene'}}) {
-            print "\n>>> No Variants Found for Gene(s): " . join(', ', @{$$filter_list{gene}}), "! <<<\n";
+            print "\n>>> No Variants Found for Gene(s): " . 
+                join(', ', @{$$filter_list{gene}}), "! <<<\n";
             exit;
         }
         if (@{$$filter_list{'hsid'}}) {
-            print "\n>>> No Variants Found for Hotspot ID(s): " . join(', ', @{$$filter_list{hsid}}), "! <<<\n";
+            print "\n>>> No Variants Found for Hotspot ID(s): " . 
+                join(', ', @{$$filter_list{hsid}}), "! <<<\n";
             exit;
         }
         if (@{$$filter_list{position}}) {
             my @positions;
             for my $query (@{$$filter_list{position}}) {
                 ($fuzzy) 
-                    ? push(@positions, (substr($query, 0, -$fuzzy) . '*'x$fuzzy)) 
+                    ? push(@positions, 
+                        (substr($query, 0, -$fuzzy) . '*'x$fuzzy)) 
                     : push(@positions, $query);
             }
-            print "\n>>> No variant found at position(s): ", join(', ', @positions), "! <<<\n" and exit;
+            print "\n>>> No variant found at position(s): ", 
+                join(', ', @positions), "! <<<\n" and exit;
         } 
     }
 }
 
 sub field_width {
-    # Load in a hash of data and an array of indices for which we want field width info, and
-    # output an array of field widths to use in the format string.
+    # Load in a hash of data and an array of indices for which we want field 
+    # width info, and output an array of field widths to use in the format 
+    # string.
     my ($data,$indices) = @_;
     my @return_widths;
     for my $pos (@$indices) {
