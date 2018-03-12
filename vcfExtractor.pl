@@ -21,7 +21,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.22.031218";
+my $version = "v7.23.031218";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -604,7 +604,8 @@ sub parse_data {
                     #$ovat_vc) if $annots and $ovat_annot;
                 push(@var_data, $gene_name, $transcript, $hgvs, $protein, $exon,
                     $function) if $annots;
-                push(@var_data, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
+                #push(@var_data, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
+                push(@var_data, $ovat_vc) if $annots and $ovat_annot;
 
                 push(@var_data, $caller);
 
@@ -952,7 +953,7 @@ sub format_output {
         'AA'                    => "%-${aa_width}s",
         'Location'              => '%-13s',
         'Function'              => "%-${func_width}s",
-        'oncomineGeneClass'     => '%-21s',
+        #'oncomineGeneClass'     => '%-21s',
         'oncomineVariantClass'  => '%s', # Since last field don't set a width.
         'LOD'                   => '%-7s',
     );
@@ -974,9 +975,7 @@ sub format_output {
         push(@header, qw(Gene Transcript CDS AA Location Function));
         # Add OVAT annots and expand function column width if we have OVAT 
         # annots.
-        if ($ovat_annot) {
-            push(@header, qw(oncomineGeneClass oncomineVariantClass));
-        }
+        push(@header, 'oncomineVariantClass') if $ovat_annot;
     }
 
     select $out_fh;
@@ -997,7 +996,8 @@ sub format_output {
             # if not outputting nocall, remove fields 3 and 4; always remove 
             # genotype field.
             ($nocall) 
-                ? (@output_data = @{$$data{$variant}}[0,1,2,5..18]) 
+                #? (@output_data = @{$$data{$variant}}[0,1,2,5..18]) 
+                ? (@output_data = @{$$data{$variant}}[0,1,2,5..17]) 
                 : (@output_data = @{$$data{$variant}});
 
             # Fill in undef slots with NULL
