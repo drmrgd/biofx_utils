@@ -12,17 +12,16 @@ use feature 'state';
 
 use Getopt::Long qw( :config bundling auto_abbrev no_ignore_case );
 use List::Util qw( sum min max );
+use Cwd qw(abs_path);
 use Sort::Versions;
 use JSON::XS; 
 use Data::Dump;
 use File::Basename;
 use Term::ANSIColor;
-use IPC::Run qw(run);
-use Cwd qw(abs_path);
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.21.030618";
+my $version = "v7.22.031218";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -394,8 +393,6 @@ my @extracted_data = qx( vcf-query $input_vcf -f "$vcf_format\n" );
 my %vcf_data = parse_data( \@extracted_data );
 
 # Filter parsed data.
-# TODO: Add back in. For now, filters are breaking my debugging.
-#my $filtered_vcf_data = \%vcf_data;
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
 
 # Finally print it all out.
@@ -466,7 +463,6 @@ sub parse_data {
         for my $alt_index ( 0..$#alt_array ) {
 
             # NOTE: New vars for flagging.
-            my @var_data;
             my $caller = 'tvc'; # set default as TVC and change later.
 
             my $alt_var = $alt_array[$alt_index];
@@ -478,6 +474,7 @@ sub parse_data {
 
             my @array_pos = grep { $omapalt_array[$_] eq $alt_var } 0..$#omapalt_array;
             for my $index ( @array_pos ) {
+                my @var_data; # Temp holder array for collected variant data.
                 (my $parsed_pos = $pos) =~ s/(chr\d+:).*/$1$norm_data{'normalizedPos'}/; 
                 
                 my $var_id = join( ":", $parsed_pos, $oref_array[$index], 
@@ -487,9 +484,29 @@ sub parse_data {
                 # duplicate entries for the same variant but one with and one 
                 # without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
-                if ( $cosid ne '.' && exists $parsed_data{$var_id} ) {
-                   delete $parsed_data{$var_id}; 
-                }
+
+                # FIXME: Pedmatch has duplicate hotspots, both of which are 
+                # populating the output.  Have to filter out the duplicates,
+                # which is a discrete list. For now, just try to get anything
+                # that already exists and has a PM #, and throw out the rest.
+
+                # FIXME: I think the duplicate hotspots bug is gone now. Maybe
+                # I can remove this?  Also for duplicate pd match bug, see
+                # 631 below.
+
+
+                # TODO: Have to figure out how to filter out the duplicate 
+                # pedmatch entries that Cindy put in there.  For some reason
+                # I can't get the logic below working (I can't remember how
+                # I cam up with what I cam up with for the duplicate HS bug.
+
+                #print "input varid: $var_id\n";
+                #if ($parsed_data{$var_id}) {
+                    #delete $parsed_data{$var_id} if $cosid eq '.';
+                    #if ($parsed_data{$var_id}->[9] =~ /^PM/) {
+                        #delete $parsed_data{$var_id} 
+                    #}
+                #}
 
                 # Start the var string.
                 # XXX
@@ -572,8 +589,8 @@ sub parse_data {
                     $ovat_vc = $ovat_gc = $gene_name = "NULL";
                 } 
                 else {
-                    ($ovat_gc, $ovat_vc, $gene_name, $transcript,$hgvs,$protein,
-                        $function, $exon) = 
+                    ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs,
+                        $protein, $function, $exon) = 
                         get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
                 }
 
@@ -592,26 +609,23 @@ sub parse_data {
                 push(@var_data, $caller);
 
                 # Load data into hash.
-                #dd \@var_data;
-                
-                # Due to buggy merging between the TVC (i.e. flowspace) caller
-                # and the Long Indel Assembler (LIA) module, we can sometimes
-                # have two entries for the same variant.  We need to select the
-                # correct of the two, which is always TVC, unless TVC is NOCALL
-                # and LIA rescues.
-                
                 # TODO: Remove this.
                 #push(@{$parsed_data{$var_id}}, @var_data);
-                
+
                 if ($parsed_data{$var_id}) {
-                    # if data already there, check if it's from LIA and replace
-                    if (${$parsed_data{$var_id}}[-1] eq 'lia') {
-                        $parsed_data{$var_id} = \@var_data;
-                    }
-                } else {
+                     #if data already there, check if it's from LIA and replace
+                     delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[-1] eq 'lia');
+                        
+                    # If we already have a variant entry and it's the PM version
+                    # replace with COSMIC version.
+                    delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[8] =~ /^PM/);
+
+                    # If TVC Duplicate Hotspot bug, 
+                    #delete $parsed_data{$var_id} if ( $cosid eq '.');
+                } 
+                else {
                     $parsed_data{$var_id} = \@var_data;
                 }
-
             }
         }
     }
@@ -633,7 +647,6 @@ sub get_ovat_annot {
     $$func =~ tr/'/"/;
     my $json_annot = JSON::XS->new->decode($$func);
     
-
     for my $func_block ( @$json_annot ) {
         # In some cases, overlapping transcripts / genes can induce multiple 
         # FUNC block entries, which makes things a mess. Skip over any FUNC
@@ -642,17 +655,8 @@ sub get_ovat_annot {
         my $can_tran = get_can_tran($func_block->{'gene'});
 
         # No transcript ID in FUNC block on occassion for some reason  
-        $func_block->{'transcript'} //= 'None';
+        $func_block->{'transcript'} //= $can_tran;
         next if $can_tran eq 'None' or $can_tran ne $func_block->{'transcript'};
-
-        # TODO:
-        # For TVC versions <5.8 (maybe going to be 5.10?), if there are two hits
-        # at the same locus, we only get one FUNC entry since TVC is not 
-        # configured to call mulit-alleles, and in this case we only get one 
-        # set of annots. Need to either skip over these other calls (use GT
-        # field to map), or output, without annotation (or try to build my
-        # own annotator!).
-
 
         # If there is "normalized" data, then we got a positive variant call; 
         # map the appropriate elems.  If not, then likely ref call, and map 
@@ -879,7 +883,7 @@ sub format_output {
     my ($data,$filter_list) = @_;
     # ===> print <====
     #dd $data;
-    #exit;
+    #__exit__(__LINE__, "Top format_output() method");
 
     # DEBUG
     # Dump first entry for help in figuring out array indices
@@ -953,6 +957,10 @@ sub format_output {
         'LOD'                   => '%-7s',
     );
 
+    # XXX
+    #dd \%string_formatter;
+    #exit;
+
     # Set up the output header and the correct format string to use.
     my @header = qw( CHROM:POS REF ALT VAF TotCov RefCov AltCov VarID );
     splice(@header, 3, 0, ('Filter', 'Filter_Reason')) unless ($nocall);
@@ -973,6 +981,14 @@ sub format_output {
 
     select $out_fh;
     my $format_string = join(' ', @string_formatter{@header}) . "\n";
+
+
+    # XXX
+    #print "$format_string\n";
+
+    # XXX
+    #dd \@header;
+    #exit;
     printf $format_string, @header;
 
     if (%$data) {
@@ -983,6 +999,7 @@ sub format_output {
             ($nocall) 
                 ? (@output_data = @{$$data{$variant}}[0,1,2,5..18]) 
                 : (@output_data = @{$$data{$variant}});
+
             # Fill in undef slots with NULL
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
             printf $format_string, @output_data;
@@ -1077,10 +1094,12 @@ sub get_can_tran {
     # single time we want to do a look up, while still allowing us to scope this
     # only when really needed (i.e. not if we don't have an IR file).
     state %tscript_ids;
-    %tscript_ids = do {
-        open(my $fh, "<", $tscript_file);
-        map{ chomp; split("\t") } <$fh>;
-    } if not %tscript_ids;
+    if (! %tscript_ids) {
+        %tscript_ids = do {
+            open(my $fh, "<", $tscript_file);
+            map{ chomp; split("\t") } <$fh>;
+        };
+    }
 
     if ($tscript_ids{$gene}) {
         return $tscript_ids{$gene};
