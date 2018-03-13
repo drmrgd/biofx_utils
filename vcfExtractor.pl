@@ -21,7 +21,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.23.031218";
+my $version = "v7.24.031318";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -234,8 +234,8 @@ if ( scalar( @ARGV ) < 1 ) {
 
 # Parse the lookup file and add variants to the postions list if processing 
 # batch-wise
-my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E CV 
-    MAN );
+my @valid_hs_ids = qw( BT COSM OM OMINDEL MCH PM_COSM PM_B PM_D PM_MCH PM_E 
+    CV MAN );
 if ($lookup) {
     if ($positions or $hsids) {
         print "$err You can not use individual filters with the lookup file ",
@@ -485,6 +485,19 @@ sub parse_data {
                 # without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
 
+                if ($parsed_data{$var_id}) {
+                     #if data already there, check if it's from LIA and replace
+                     delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[-1] eq 'lia');
+                        
+                    # If we already have a variant entry and it's the PM version
+                    # replace with COSMIC version.
+                    delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[8] =~ /^PM/);
+
+                    # If TVC Duplicate Hotspot bug, 
+                    delete $parsed_data{$var_id} if ( $cosid eq '.');
+                    #delete $parsed_data{$var_id} if ( $parsed_data{$var_id}->[8] eq '.');
+                } 
+
                 # FIXME: Pedmatch has duplicate hotspots, both of which are 
                 # populating the output.  Have to filter out the duplicates,
                 # which is a discrete list. For now, just try to get anything
@@ -612,21 +625,7 @@ sub parse_data {
                 # Load data into hash.
                 # TODO: Remove this.
                 #push(@{$parsed_data{$var_id}}, @var_data);
-
-                if ($parsed_data{$var_id}) {
-                     #if data already there, check if it's from LIA and replace
-                     delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[-1] eq 'lia');
-                        
-                    # If we already have a variant entry and it's the PM version
-                    # replace with COSMIC version.
-                    delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[8] =~ /^PM/);
-
-                    # If TVC Duplicate Hotspot bug, 
-                    #delete $parsed_data{$var_id} if ( $cosid eq '.');
-                } 
-                else {
-                    $parsed_data{$var_id} = \@var_data;
-                }
+                $parsed_data{$var_id} = \@var_data;
             }
         }
     }
