@@ -7,6 +7,7 @@
 ################################################################################
 use warnings;
 use strict;
+use version;
 use autodie;
 use feature 'state';
 
@@ -152,13 +153,13 @@ sub help {
 	exit;
 }
 
-sub version {
+sub version_info {
 	printf "%s - %s\n", $scriptname, $version;
 	exit;
 }
 
 help if $help;
-version if $ver_info;
+version_info if $ver_info;
 
 #if (DEBUG or $opts{'Verbose'}) {
     #print "=" x 50 . "\n";
@@ -316,6 +317,7 @@ if ( $outfile ) {
 } else {
 	$out_fh = \*STDOUT;
 }
+
 #########--------------- END Arg Parsing and validation ---------------#########
 my $input_vcf = shift;
 
@@ -326,12 +328,12 @@ die "$err '$input_vcf' does not appear to be a valid VCF file or does not ",
     "have a header.\n" unless @header;
 close $vcf_fh;
 
-# Crude check for TVC3.2 or TVC4.0+ VCF file.  Still need to refine this
-if ( grep { /^##INFO.*Bayesian_Score/ } @header ) {
-    print "$warn '$input_vcf' appears to be from TVCv3.2, and the 'tvc32' ",
-    "option was not selected.  The file may not be processed correctly.\n";
-    die "Pre TVCv4.0 VCF file detected. These files are not longer supported 
-        by this utility\n";
+# Check for TVC4.4+ VCF file. We can no longer process older files.
+my ($vcf_version) = map { /^##source="tvc (.*?) \(.*$/ } @header;
+$vcf_version =~ s/-/./; 
+if (version->parse($vcf_version) < version->parse('4.4.2')) {
+    die "$err Pre TVCv4.4 VCF file detected.  These are no longer supported by",
+        " this utility and must be manually parsed.\n";
 }
 
 # Trigger IR / OVAT annot capture if available
