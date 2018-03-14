@@ -22,7 +22,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.24.031318";
+my $version = "v7.25.031418";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -408,15 +408,6 @@ if ( @warnings && $verbose ) {
 
 sub parse_data {
     # Extract the VCF information and create a hash of the data.  
-    # TODO: 
-    #     In very rare cases, when TVC and LIA make the same call and there
-    #     is a merge, if TVC is NOCALL'd, we should use the results from LIA.
-    #     This is currently implemented as of v8 of this script. However, there
-    #     can also be even rarer circumstances where the call in TVC is a 
-    #     hotspot, and the variant ID does not transfer to LIA. In this case we
-    #     should keep the ID from TVC, toss the entry, and move the ID to the 
-    #     LIA call.  For now, not going to worry about it, since there are 
-    #     hardly any cases where I see this with our panel.
     my $data = shift;
     my %parsed_data;
 
@@ -426,13 +417,8 @@ sub parse_data {
             $omapalt, $func, $lod, $gtr, $af, $fro, $ro, $fao, $ao, 
             $dp ) = split( /\t/ );
 
-        # XXX DEBUG
-        ##next unless $pos =~ /^chr17:7578[47]/;
-        #next unless $pos =~ /^chr17:75771/;
-        #next unless $pos =~ /^chr3/;
-
-        # Limit processing to just one position and output more metrics so that
-        # we can figure out what's going on.
+        # Limit processing to just one position and output more metrics so
+        # that we can figure out what's going on.
         if ($debug_pos) {
             next unless $pos eq $debug_pos;
             print_debug_output([split(/\t/)]);
@@ -446,6 +432,7 @@ sub parse_data {
 
         # Filter out vars we don't want to print out later anyway.
         next if $reason eq "NODATA";
+        
         # Sometimes not getting correct 'NOCALL' flag; manually set if need to.
         $filter = "NOCALL" if (($gtr =~ m|\./\.|) or ($reason eq 'REJECTION'));
         next if ( $nocall && $filter eq "NOCALL" );
@@ -653,12 +640,14 @@ sub get_ovat_annot {
         # In some cases, overlapping transcripts / genes can induce multiple 
         # FUNC block entries, which makes things a mess. Skip over any FUNC
         # block entry that does not have the correct transcript ID based on our
-        # canonical transcript list.
+        # canonical transcript list.  Since some primary transcripts have 
+        # changed over time, will get an array of ids to map.
         my $can_tran = get_can_tran($func_block->{'gene'});
 
         # No transcript ID in FUNC block on occassion for some reason  
-        $func_block->{'transcript'} //= $can_tran;
-        next if $can_tran eq 'None' or $can_tran ne $func_block->{'transcript'};
+        $func_block->{'transcript'} //= $can_tran->[0];
+        next if $can_tran eq 'None' 
+            or ! grep { $func_block->{'transcript'} eq $_ } @$can_tran;
 
         # If there is "normalized" data, then we got a positive variant call; 
         # map the appropriate elems.  If not, then likely ref call, and map 
@@ -1082,12 +1071,26 @@ sub print_debug_output {
     print '='x59, "\n";
 }
 
+sub __load_tscript_file {
+    my $tscript_file = shift;
+    my %ids;
+
+    open (my $fh, "<", $tscript_file);
+    while (<$fh>) {
+        chomp;
+        next if /^#/;
+        my @elems = split(',');
+        @{$ids{$elems[0]}} = @elems[1..$#elems];
+    }
+    return %ids;
+}
+
 sub get_can_tran {
     # IR Annotation can get strange with overlapping genes. Figure out the 
     # canonical transcript for filtering, based on transcript list in resources
     # dir in the current package.
     my $gene = shift;
-    my $tscript_file = abs_path(dirname($0)) . '/resources/refseq.txt';
+    my $tscript_file = abs_path(dirname($0)) . '/resources/ir_derived_refseq.csv';
     die "Error: Can not find the canonical transcript file!\n" 
         unless -f $tscript_file;
 
@@ -1095,12 +1098,7 @@ sub get_can_tran {
     # single time we want to do a look up, while still allowing us to scope this
     # only when really needed (i.e. not if we don't have an IR file).
     state %tscript_ids;
-    if (! %tscript_ids) {
-        %tscript_ids = do {
-            open(my $fh, "<", $tscript_file);
-            map{ chomp; split("\t") } <$fh>;
-        };
-    }
+    %tscript_ids = __load_tscript_file($tscript_file) if ! %tscript_ids;
 
     if ($tscript_ids{$gene}) {
         return $tscript_ids{$gene};
