@@ -22,7 +22,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.26.031618";
+my $version = "v7.27.031618";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -160,13 +160,6 @@ sub version_info {
 
 help if $help;
 version_info if $ver_info;
-
-#if (DEBUG or $opts{'Verbose'}) {
-    #print "=" x 50 . "\n";
-    #print "Commandline opts as passed to script:\n";
-    #printf "\t%-15s => %s\n", $_,$opts{$_} for keys %opts;
-    #print "=" x 50 . "\n";
-#}
 
 # Set up some colored output flags and warn / error variables
 my $warn  = colored( "WARN:", 'bold yellow on_black');
@@ -469,18 +462,20 @@ sub parse_data {
                 my $var_id = join( ":", $parsed_pos, $oref_array[$index], 
                     $oalt_array[$index] );
                 my $cosid = $oid_array[$index];
+
                 # Stupid bug with de novo and hotspot merge that can create two 
                 # duplicate entries for the same variant but one with and one 
                 # without a HS (also different VAF, coverage,etc). Try this to 
                 # capture only HS entry.
-
                 if ($parsed_data{$var_id}) {
                     # if data already there, check if it's from LIA and replace
                     if ($parsed_data{$var_id}->[-1] eq 'lia') {
                         delete $parsed_data{$var_id};
                     }
-                    # If we already have a variant entry and it's the PM version
-                    # replace with COSMIC version.
+                    # Pedmatch has duplicate hotspots, both of which are 
+                    # populating the output. If we already have a variant 
+                    # entry and it's the PM version replace with COSMIC 
+                    # version.
                     elsif ($parsed_data{$var_id}->[8] =~ /^PM/) {
                         delete $parsed_data{$var_id};
                     }
@@ -489,32 +484,7 @@ sub parse_data {
                     delete $parsed_data{$var_id} if ( $cosid eq '.');
                 } 
 
-                # FIXME: Pedmatch has duplicate hotspots, both of which are 
-                # populating the output.  Have to filter out the duplicates,
-                # which is a discrete list. For now, just try to get anything
-                # that already exists and has a PM #, and throw out the rest.
-
-                # FIXME: I think the duplicate hotspots bug is gone now. Maybe
-                # I can remove this?  Also for duplicate pd match bug, see
-                # 631 below.
-
-
-                # TODO: Have to figure out how to filter out the duplicate 
-                # pedmatch entries that Cindy put in there.  For some reason
-                # I can't get the logic below working (I can't remember how
-                # I cam up with what I cam up with for the duplicate HS bug.
-
-                #print "input varid: $var_id\n";
-                #if ($parsed_data{$var_id}) {
-                    #delete $parsed_data{$var_id} if $cosid eq '.';
-                    #if ($parsed_data{$var_id}->[9] =~ /^PM/) {
-                        #delete $parsed_data{$var_id} 
-                    #}
-                #}
-
                 # Start the var string.
-                # XXX
-                #push( @{$parsed_data{$var_id}},
                 push( @var_data,
                     $parsed_pos,
                     $norm_data{'normalizedRef'},
@@ -522,7 +492,6 @@ sub parse_data {
                     $filter, 
                     $reason
                 );
-
 
                 # Check to see if call is result of long indel assembler and 
                 # handle appropriately. 
@@ -534,8 +503,6 @@ sub parse_data {
                     $vaf = vaf_calc( \$filter, \$dp, \$ro, 
                         \$ao_array[$alt_index] );
                     
-                    # XXX
-                    #push(@{$parsed_data{$var_id}},$vaf, $lod_array[$alt_index],
                     push(@var_data, $vaf, $lod_array[$alt_index],
                         $tot_coverage, $ro, $ao_array[$alt_index], $cosid);
                 } else {
@@ -544,8 +511,6 @@ sub parse_data {
                     $vaf = vaf_calc( \$filter, \$tot_coverage, \$fro, 
                         \$fao_array[$alt_index] );
                     
-                    # XXX
-                    #push(@{$parsed_data{$var_id}}, $vaf, $lod_array[$alt_index],
                     push(@var_data, $vaf, $lod_array[$alt_index],
                         $tot_coverage, $fro, $fao_array[$alt_index], $cosid );
                 }
@@ -553,19 +518,12 @@ sub parse_data {
                 # Filter out reference calls if we have turned on the noref 
                 # filter. Have to leave the NOCALL calls if we have left those 
                 # in, and have to deal with sub 1% VAFs for cfDNA assay.
-                
-                # XXX
-                #my $calc_vaf = ${$parsed_data{$var_id}}[5];
                 my $calc_vaf = $var_data[5];
                 if ( $calc_vaf ne '.' ) {
                     if ($calc_vaf == 0) {
-                        # XXX
-                        #delete $parsed_data{$var_id} and next if $noref;
                         next if $noref;
                     }
                     elsif ($calc_vaf < 1) {
-                        # XXX
-                        #delete $parsed_data{$var_id} and next if ! $cfdna; 
                         next if ! $cfdna; 
                     }
                 }
@@ -573,14 +531,10 @@ sub parse_data {
                 # Make some data changes for output if we have cfDNA and not 
                 # conventional panel / assay.
                 if ($cfdna) {
-                    # XXX
-                    #${$parsed_data{$var_id}}[7] = $dp;
                     $var_data[7] = $dp;
                 }
                 else {
                     # We don't have cfDNA, so remove the LOD field from output.
-                    # XXX
-                    #splice(@{$parsed_data{$var_id}}, 6, 1);
                     splice(@var_data, 6, 1);
                 }
                 
@@ -601,27 +555,17 @@ sub parse_data {
                 # Now handle in two steps.  Add IR annots if there, and then 
                 # if wanted ovat annots, add them too.
                 
-                # XXX
-                #push(@{$parsed_data{$var_id}}, $gene_name, $transcript, $hgvs, 
-                    #$protein, $exon, $function) if $annots;
-                #push(@{$parsed_data{$var_id}}, $ovat_gc, 
-                    #$ovat_vc) if $annots and $ovat_annot;
                 push(@var_data, $gene_name, $transcript, $hgvs, $protein, $exon,
                     $function) if $annots;
-                #push(@var_data, $ovat_gc, $ovat_vc) if $annots and $ovat_annot;
                 push(@var_data, $ovat_vc) if $annots and $ovat_annot;
-
                 push(@var_data, $caller);
 
                 # Load data into hash.
-                # TODO: Remove this.
-                #push(@{$parsed_data{$var_id}}, @var_data);
                 $parsed_data{$var_id} = \@var_data;
             }
         }
     }
     
-    # XXX
     #dd \%parsed_data;
     #__exit__(__LINE__, "Finsished parsing data and generating variant hash.");
     return %parsed_data;
@@ -787,8 +731,8 @@ sub filter_data {
         ($noref) ? print "$off!\n" : print "$on.\n";
     }
     
-    # First run OVAT filter; no need to push big list of variants through other 
-    # filters.
+    # First run OVAT filter; no need to push big list of variants through
+    # other filters.
     $data = ovat_filter($data) if $ovat_filter;
     $data = hs_filtered($data) if $hotspots;
 
@@ -813,8 +757,8 @@ sub filter_data {
     } 
 
     # Now run filters
-    run_filter($selected_filters[0], \@{$$filter{$selected_filters[0]}}, $fuzzy,
-        $data, \%filtered_data);
+    run_filter($selected_filters[0], \@{$$filter{$selected_filters[0]}}, 
+        $fuzzy, $data, \%filtered_data);
 
     return \%filtered_data;
 }
@@ -874,9 +818,6 @@ sub hs_filtered {
 sub format_output {
     # Format and print out the results
     my ($data,$filter_list) = @_;
-    # ===> print <====
-    #dd $data;
-    #__exit__(__LINE__, "Top format_output() method");
 
     # DEBUG
     # Dump first entry for help in figuring out array indices
@@ -904,7 +845,8 @@ sub format_output {
         my ($calc_ref_width, $calc_alt_width, $calc_varid_width) = 
             field_width($data, [1,2,9]);
 
-        # Have to pre-declare and set to 0, else we will get warning when no opt
+        # Have to pre-declare and set to 0, else we will get warning when no 
+        # opt
         my ($calc_filter_width, $calc_cds_width, $calc_aa_width, 
             $calc_func_width) = (0)x4;
         ($calc_filter_width) = field_width($data, [4]) unless $nocall;
@@ -950,10 +892,6 @@ sub format_output {
         'LOD'                   => '%-7s',
     );
 
-    # XXX
-    #dd \%string_formatter;
-    #exit;
-
     # Set up the output header and the correct format string to use.
     my @header = qw( CHROM:POS REF ALT VAF TotCov RefCov AltCov VarID );
     splice(@header, 3, 0, ('Filter', 'Filter_Reason')) unless ($nocall);
@@ -972,14 +910,6 @@ sub format_output {
 
     select $out_fh;
     my $format_string = join(' ', @string_formatter{@header}) . "\n";
-
-
-    # XXX
-    #print "$format_string\n";
-
-    # XXX
-    #dd \@header;
-    #exit;
     printf $format_string, @header;
 
     if (%$data) {
@@ -988,7 +918,6 @@ sub format_output {
             # if not outputting nocall, remove fields 3 and 4; always remove 
             # genotype field.
             ($nocall) 
-                #? (@output_data = @{$$data{$variant}}[0,1,2,5..18]) 
                 ? (@output_data = @{$$data{$variant}}[0,1,2,5..17]) 
                 : (@output_data = @{$$data{$variant}});
 
