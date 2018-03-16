@@ -1090,7 +1090,7 @@ sub get_can_tran {
     # canonical transcript for filtering, based on transcript list in resources
     # dir in the current package.
     my $gene = shift;
-    my $tscript_file = abs_path(dirname($0)) . '/resources/ir_derived_refseq.csv';
+    my $tscript_file = abs_path(dirname($0)) . '/resources/refseq.csv';
     die "Error: Can not find the canonical transcript file!\n" 
         unless -f $tscript_file;
 
