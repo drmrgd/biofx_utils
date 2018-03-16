@@ -27,8 +27,8 @@ def get_args():
         '%(default)s.')
     parser.add_argument('-o', '--output', metavar="<output_file>", help='Output'
         ' file for data. Default: STDOUT')
-    parser.add_argument('-v', '--version', action='version', version='prog(s) - '
-        'v' + version)
+    parser.add_argument('-v', '--version', action='version', 
+            version = '%(prog)s - v' + version)
     args = parser.parse_args()
 
     if not any(x for x in (args.gene, args.pathway)):
