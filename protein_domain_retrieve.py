@@ -114,4 +114,10 @@ def main(gene_list, outfh):
 
 if __name__ == '__main__':
     gene_list, outfh = get_args()
+
+    # TODO
+    sys.stderr.write('This script is not yet implemented as it is still a work'
+        ' in progress.\n')
+    sys.exit(1)
+
     main(gene_list, outfh)
