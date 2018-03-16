@@ -22,7 +22,7 @@ use Term::ANSIColor;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.25.031418";
+my $version = "v7.26.031618";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -423,7 +423,7 @@ sub parse_data {
             next unless $pos eq $debug_pos;
             print_debug_output([split(/\t/)]);
         }
-        
+
         # IR generates CNV and Fusion entries that are not compatible.  
         next if ( $alt =~ /[.><\]\d+]/ ); 
 
@@ -475,16 +475,18 @@ sub parse_data {
                 # capture only HS entry.
 
                 if ($parsed_data{$var_id}) {
-                     #if data already there, check if it's from LIA and replace
-                     delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[-1] eq 'lia');
-                        
+                    # if data already there, check if it's from LIA and replace
+                    if ($parsed_data{$var_id}->[-1] eq 'lia') {
+                        delete $parsed_data{$var_id};
+                    }
                     # If we already have a variant entry and it's the PM version
                     # replace with COSMIC version.
-                    delete $parsed_data{$var_id} if ($parsed_data{$var_id}->[8] =~ /^PM/);
+                    elsif ($parsed_data{$var_id}->[8] =~ /^PM/) {
+                        delete $parsed_data{$var_id};
+                    }
 
                     # If TVC Duplicate Hotspot bug, 
                     delete $parsed_data{$var_id} if ( $cosid eq '.');
-                    #delete $parsed_data{$var_id} if ( $parsed_data{$var_id}->[8] eq '.');
                 } 
 
                 # FIXME: Pedmatch has duplicate hotspots, both of which are 
@@ -1090,7 +1092,7 @@ sub get_can_tran {
     # canonical transcript for filtering, based on transcript list in resources
     # dir in the current package.
     my $gene = shift;
-    my $tscript_file = abs_path(dirname($0)) . '/resources/refseq.csv';
+    my $tscript_file = abs_path(dirname($0)) . '/resources/refseq.txt';
     die "Error: Can not find the canonical transcript file!\n" 
         unless -f $tscript_file;
 
