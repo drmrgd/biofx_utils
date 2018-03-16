@@ -136,3 +136,27 @@ get_clinvar_variant_data.py
         table of variant information derived from ClinVar using the eutils API 
         functionality of NCBI. No filtering possible for now, but will be added 
         later. 
+
+get_pathway.py
+==============
+
+    **Current Version:** v1.1.021618
+
+    **Requirements:**
+
+    **Description:** 
+    
+        Using a pathway lookup table in ``resources``, generate get a list of 
+        oncogenic related pathways for a gene or set of genes.  Need to continue
+        to refine the pathways lookup tables, but the hope is that this will 
+        be a good annotator tool that can be implemented into other pipelines.
+
+protein_domain_retrieve.py
+==========================
+
+    **Current Version:** v0.2.121517
+
+    **Requirements:**
+
+    **Description:** 
+       *This script is not yet complete and is still being worked on.*
