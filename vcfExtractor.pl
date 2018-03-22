@@ -19,10 +19,11 @@ use JSON::XS;
 use Data::Dump;
 use File::Basename;
 use Term::ANSIColor;
+use Time::Piece;
 
 use constant 'DEBUG' => 0;
 my $scriptname = basename($0);
-my $version = "v7.27.031618";
+my $version = "v7.28.032218";
 
 print colored("*" x 75, 'bold yellow on_black'), "\n";
 print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
@@ -71,15 +72,20 @@ In addition to the Perl modules, Sort::Versions, JSON::XS, and Term::ANSIcolor,
 which may not be standard in your distribution, the program will require the
 vcftools ('vcftools.sourceforge.net') package to be installed and in your 
 \$PATH.
+
+Finally, output can be either in the form of an easy to read table (default), or
+as a new VCF file, containing the data that was left after filtering. This can be
+useful for cases where one still needs a VCF format, but does not want all of the 
+extra stuff that is associated with a TVC VCF file.
 EOT
 
 my $usage = <<"EOT";
-USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
+USAGE: $scriptname [options] <input_vcf_file>
 
     Program Options
     -a, --annot     Add IR and Oncomine OVAT annotation information to output 
                     if available.
-    -V, --Verbose   Print additional information during processing.
+    -q, --quiet     Print additional information during processing.
     -c, --cfdna     Data is from a cfDNA run, and some metrics and thresholds 
                     will be different.
     -o, --output    Send output to custom file.  Default is STDOUT.
@@ -111,6 +117,7 @@ USAGE: $scriptname [options] [-f {1,2,3}] <input_vcf_file>
     -O, --OVAT      Only report Oncomine Annotated Variants.
     -H, --HS        Print out only variants that have a Hotspot ID (NOT YET 
                     IMPLEMENTED).
+    -V, --VCF       Output data as a new, simple VCF file, rather than a table.
 EOT
 
 my $help;
@@ -124,29 +131,32 @@ my $nocall;
 my $hsids;
 my $annots;
 my $ovat_filter;
-my $verbose;
+my $quiet;
 my $gene;
 my $hotspots;
 my $cfdna;
 my $debug_pos;  # undocumented.
+my $vcf_output;
 
-GetOptions( "output|o=s"    => \$outfile,
-            "cfdna|c"       => \$cfdna,
-            "annot|a"       => \$annots, 
-            "OVAT|O"        => \$ovat_filter,
-            "id|i=s"        => \$hsids,
-            "NOCALL|N"      => \$nocall,
-            "pos|p=s"       => \$positions,
-            "lookup|l=s"    => \$lookup,
-            "fuzzy|f=i"     => \$fuzzy,
-            "noref|n"       => \$noref,
-            "gene|g=s"      => \$gene,
-            "debug_pos=s"   => \$debug_pos, #undocumented.
-            "version|v"     => \$ver_info,
-            "Verbose|V"     => \$verbose,
-            "HS|H"          => \$hotspots,
-            "help|h"        => \$help )
-        or die "\n$usage";
+GetOptions( 
+    "output|o=s"    => \$outfile,
+    "cfdna|c"       => \$cfdna,
+    "annot|a"       => \$annots, 
+    "OVAT|O"        => \$ovat_filter,
+    "id|i=s"        => \$hsids,
+    "NOCALL|N"      => \$nocall,
+    "pos|p=s"       => \$positions,
+    "lookup|l=s"    => \$lookup,
+    "fuzzy|f=i"     => \$fuzzy,
+    "noref|n"       => \$noref,
+    "gene|g=s"      => \$gene,
+    "debug_pos=s"   => \$debug_pos, #undocumented.
+    "version|v"     => \$ver_info,
+    "quiet|q"       => \$quiet,
+    "HS|H"          => \$hotspots,
+    "VCF|V"         => \$vcf_output,
+    "help|h"        => \$help )
+or die "\n$usage";
 
 sub help {
 	printf "%s - %s\n\n%s\n\n%s\n", $scriptname, $version, $description, $usage;
@@ -205,7 +215,7 @@ if ( $ovat_filter ) {
     }
     elsif ( ! $annots ) {
     print "$info Requested Oncomine annotation filter without adding the OVAT ",
-        "annotations. Auto adding the OVAT annotations!\n" if $verbose;
+        "annotations. Auto adding the OVAT annotations!\n" if $quiet;
     $annots=1;
     }
 }
@@ -253,7 +263,7 @@ if ($lookup) {
 # Double check the query (position / cosid) format is correct
 my (@coords, @cosids, @filter_list);
 if ( $positions ) {
-    print "Checking position id lookup...\n" if $verbose;
+    print "Checking position id lookup...\n" if $quiet;
     @coords = split( /\s+/, $positions );
     for my $coord ( @coords ) {
         if ( $coord !~ /\Achr[0-9YX]+:\d+$/i ) {
@@ -271,7 +281,7 @@ elsif ( $hsids ) {
             "to work with.\n";
         exit 1;
     }
-    print "Checking variant id lookup...\n" if $verbose;
+    print "Checking variant id lookup...\n" if $quiet;
     @cosids = split( /\s+/, $hsids );
     for my $varid ( @cosids ) { 
         if ( ! grep { $varid =~ /$_\d+/ } @valid_hs_ids ) {
@@ -300,13 +310,18 @@ my %vcf_filters = (
     'hsid'     => \@cosids,
     'position' => \@coords,
 );
-print "Applied filters: \n" and dd \%vcf_filters if DEBUG or $verbose;
+print "Applied filters: \n" and dd \%vcf_filters if DEBUG or $quiet;
+
+# Set up output type
+my $output_type;
+($vcf_output) ? ($output_type = 'vcf') : ($output_type = 'table');
 
 # Write output to either indicated file or STDOUT
 my $out_fh;
 if ( $outfile ) {
 	open( $out_fh, ">", $outfile ) 
-    || die "Can't open the output file '$outfile' for writing: $!";
+        || die "Can't open the output file '$outfile' for writing: $!";
+    print "Writing output to '$outfile.'\n";
 } else {
 	$out_fh = \*STDOUT;
 }
@@ -391,10 +406,11 @@ my %vcf_data = parse_data( \@extracted_data );
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
 
 # Finally print it all out.
-format_output($filtered_vcf_data, \%vcf_filters);
+# XXX
+format_output($filtered_vcf_data, \%vcf_filters, \@header, $output_type);
 
 # Wrap up
-if ( @warnings && $verbose ) {
+if ( @warnings && $quiet) {
     print "\n";
     print $_ for @warnings;
 }
@@ -720,7 +736,7 @@ sub filter_data {
     my $on  = colored( "On", 'bold green on_black');
     my $off = colored( "Off", 'bold red on_black');
 
-    if ($verbose) {
+    if ($quiet) {
         print "$info OVAT filter status: ";
         ($ovat_filter) ? print "$on!\n" : print "$off.\n";
         print "$info Hotspot ID filter status: ";
@@ -798,7 +814,7 @@ sub run_filter {
 sub ovat_filter {
     # Filter out calls that are not oncomine reportable variants
     my $data = shift;
-    print "$info Running ovat filter\n" if $verbose;
+    print "$info Running ovat filter\n" if $quiet;
     for my $variant ( keys %$data ) {
         delete $$data{$variant} if $$data{$variant}->[18] eq '---';
     }
@@ -808,7 +824,7 @@ sub ovat_filter {
 sub hs_filtered {
     # Filter out calls that are not oncomine reportable variants
     my $data = shift;
-    print "$info Running Hotspots filter\n" if $verbose;
+    print "$info Running Hotspots filter\n" if $quiet;
     for my $variant ( keys %$data ) {
         delete $$data{$variant} if $$data{$variant}->[10] eq '.';
     }
@@ -817,7 +833,19 @@ sub hs_filtered {
 
 sub format_output {
     # Format and print out the results
-    my ($data,$filter_list) = @_;
+    # Fields in output data:
+    #     0. chr:pos             10. Gene
+    #     1. REF                 11. Transcript
+    #     2. ALT                 12. CDS
+    #     3. Filter (NOCALL)     13. AA
+    #     4. Filter Reason       14. Location
+    #     5. VAF                 15. Function
+    #     6. TotCov              16. OVAT VC
+    #     7. RefCov              17. tvc/lia flag
+    #     8. AltCov
+    #     9. VarID
+
+    my ($data, $filter_list, $header, $output_type) = @_;
 
     # DEBUG
     # Dump first entry for help in figuring out array indices
@@ -829,9 +857,11 @@ sub format_output {
         #}
         #exit;
     #}
-    #dd $data;
-    #exit;
     
+    if ($output_type eq 'vcf') {
+        make_vcf($header, $data);
+    }
+   
     # Default starting values.
     my $ref_width    = 5;
     my $alt_width    = 5;
@@ -1038,8 +1068,69 @@ sub get_can_tran {
     }
 }
 
+sub __make_header {
+    my $header = shift;
+    my @captured;
+    no warnings;
+    
+    my @wanted = qw(##fileformat ##fileDate ##source ##reference ##sampleGender
+        ##sampleDisease ##contig ##INFO=<ID=AF ##INFO=<ID=AO ##INFO=<ID=DP 
+        ##INFO=<ID=RO ##FORMAT=<ID=AF ##FORMAT=<ID=AO ##FORMAT=<ID=DP 
+        ##FORMAT=<ID=RO ##FORMAT=<ID=GT );
+
+    for my $line (@$header) {
+        push(@captured, $line) if grep { $line =~ /$_/ } @wanted;
+    }
+    push(@captured, $header->[-1]);
+
+    # Update the date to today's
+    my $today = localtime->strftime('%Y-%m-%d');
+    ($captured[1] =  $captured[1]) =~ s/\d{8}/$today/;
+    return \@captured;
+}
+
+sub __make_vcf_line {
+    my $data = shift;
+
+    my ($chr, $pos) = split(/:/, $data->[0]);
+    my $vaf = $data->[5];
+    my $gt;
+    if ($vaf eq '.') {
+        $gt = './.';
+    }
+    elsif ($vaf > 50) {
+        $gt = '1/1';
+    }
+    else {
+        $gt = '0/1';
+    }
+
+    my $info = sprintf('AF=%s;DP=%s;RO=%s;AO=%s', @$data[5..8]);
+    my $sample_data = join(':', $gt, @$data[5..8]);
+
+    my $vcf_line = join("\t", $chr, $pos, $data->[9], $data->[1], $data->[2], '.',
+        $data->[3], $info, 'GT:AF:DP:RO:AO', $sample_data) . "\n"; 
+    return $vcf_line;
+}
+
+sub make_vcf {
+    # Output data in VCF format instead of a pretty table.
+    my ($header, $data) = @_;
+    my $final_header = __make_header($header);
+
+    my @vcf_lines;
+    for (sort { versioncmp( $a, $b ) } keys %$data) {
+        push(@vcf_lines, __make_vcf_line($$data{$_}));
+    }
+
+    print {$out_fh} $_ for @$final_header;
+    print {$out_fh} $_ for @vcf_lines;
+    exit;
+}
+
 sub __exit__ {
     my ($line, $msg) = @_;
+    $msg //= '';
     print "\n\n";
     print colored("Got exit message at line $line with message: $msg", 
         'bold white on_green');
