@@ -1,5 +1,5 @@
-# Version: 1.0
-# Date: 2018-03-13
+# Version: 1.1
+# Date: 2018-03-29
 # Origin is v4.4, v5.0, and v5.2 of IR.  Some genes have more than one 
 # transcript since it seems that the canonical transcript has changed over time.
 # Also, and very strangely, one gene, ACVRL1, does not even have a canoncial
@@ -40,6 +40,7 @@ CDH1,NM_004360.3
 CDK2,NM_001798.3
 CDK4,NM_000075.3
 CDK6,NM_001145306.1
+CDK12,NM_016507.3
 CDKN1B,NM_004064.4
 CDKN2A,NM_000077.4
 CDKN2B-AS1,NR_047543.1
