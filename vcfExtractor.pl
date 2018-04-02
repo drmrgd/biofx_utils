@@ -21,14 +21,18 @@ use File::Basename;
 use Term::ANSIColor;
 use Time::Piece;
 
-use constant 'DEBUG' => 0;
-my $scriptname = basename($0);
-my $version = "v7.28.032218";
+use constant 'DEBUG' => 0; # set extra debug output.
+use constant 'DEVEL' => 0; # output extra info when in devel
 
-print colored("*" x 75, 'bold yellow on_black'), "\n";
-print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
-    'bold yellow on_black'), "\n";
-print colored("*" x 75, 'bold yellow on_black'), "\n\n"; 
+my $scriptname = basename($0);
+my $version = "v8.0.040218";
+
+if (DEVEL) {
+    print colored("*" x 75, 'bold yellow on_black'), "\n";
+    print colored("\tDEVELOPMENT VERSION ($version) OF VCF EXTRACTOR", 
+        'bold yellow on_black'), "\n";
+    print colored("*" x 75, 'bold yellow on_black'), "\n\n"; 
+}
 
 my $description = <<"EOT";
 Parse an Ion Torrent or Ion Reporter VCF file. By default, this program will
@@ -406,7 +410,6 @@ my %vcf_data = parse_data( \@extracted_data );
 my $filtered_vcf_data = filter_data(\%vcf_data, \%vcf_filters);
 
 # Finally print it all out.
-# XXX
 format_output($filtered_vcf_data, \%vcf_filters, \@header, $output_type);
 
 # Wrap up
@@ -651,11 +654,6 @@ sub get_ovat_annot {
     # Sometimes, for reasons I'm not quite sure of, there can be an array for 
     # the functional annotation in each func block entry.  I think it's safe to
     # take the most severe of the list and to use.  
-
-    # TODO: Refine this.  I can't figure out when and in what context we get 
-    # this multiple function annotations bit. So, for now, let's just print 
-    # them all out and see what the trend looks like, and the figure it out 
-    # from there.  
     ($function) = join('|', @$function) if ref $function eq 'ARRAY';
 
     if (DEBUG) {
@@ -917,7 +915,6 @@ sub format_output {
         'AA'                    => "%-${aa_width}s",
         'Location'              => '%-13s',
         'Function'              => "%-${func_width}s",
-        #'oncomineGeneClass'     => '%-21s',
         'oncomineVariantClass'  => '%s', # Since last field don't set a width.
         'LOD'                   => '%-7s',
     );
@@ -1075,17 +1072,21 @@ sub __make_header {
     
     my @wanted = qw(##fileformat ##fileDate ##source ##reference ##sampleGender
         ##sampleDisease ##contig ##INFO=<ID=AF ##INFO=<ID=AO ##INFO=<ID=DP 
-        ##INFO=<ID=RO ##FORMAT=<ID=AF ##FORMAT=<ID=AO ##FORMAT=<ID=DP 
-        ##FORMAT=<ID=RO ##FORMAT=<ID=GT );
+        ##INFO=<ID=RO ##FORMAT=<ID=GT ##FORMAT=<ID=DP );
 
     for my $line (@$header) {
         push(@captured, $line) if grep { $line =~ /$_/ } @wanted;
     }
+    my $new_field = qq(##FORMAT=<ID=AD,Number=G,Type=Integer,Description="Allelic Depths of REF and ALT(s) in the order listed">\n);
+    push(@captured, $new_field);
     push(@captured, $header->[-1]);
 
     # Update the date to today's
     my $today = localtime->strftime('%Y-%m-%d');
     ($captured[1] =  $captured[1]) =~ s/\d{8}/$today/;
+
+    # Change AF field to VAF to help with MAF conflicts.
+    s/ID=AF/ID=VAF/ for @captured;
     return \@captured;
 }
 
@@ -1105,11 +1106,11 @@ sub __make_vcf_line {
         $gt = '0/1';
     }
 
-    my $info = sprintf('AF=%s;DP=%s;RO=%s;AO=%s', @$data[5..8]);
-    my $sample_data = join(':', $gt, @$data[5..8]);
+    my $info = sprintf('VAF=%s;DP=%s;RO=%s;AO=%s', @$data[5..8]);
+    my $sample_data = join(':', $gt, "$data->[7],$data->[8]", $data->[6]);
 
     my $vcf_line = join("\t", $chr, $pos, $data->[9], $data->[1], $data->[2], '.',
-        $data->[3], $info, 'GT:AF:DP:RO:AO', $sample_data) . "\n"; 
+        $data->[3], $info, 'GT:AD:DP', $sample_data) . "\n"; 
     return $vcf_line;
 }
 
