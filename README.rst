@@ -18,145 +18,145 @@ one has a full set of help docs, which can be accessed with by passing the
 getseq.pl
 =========
 
-    **Current Version:** v1.3.0_110515 
+**Current Version:** v1.3.0_110515 
 
-    **Requirements:**
+**Requirements:**
 
-        - Perl Modules: 
+- Perl Modules: 
 
-            * ``LWP::Simple``
-            * ``XML::Twig``
-            * ``Sort::Versions``
-            * ``Data::Dump``
+    * ``LWP::Simple``
+    * ``XML::Twig``
+    * ``Sort::Versions``
+    * ``Data::Dump``
 
-    **Description:** 
+**Description:** 
 
-        Script to query the UCSC DAS server and pull out sequence information 
-        given a position string.  Can use either a single string entry: ::
+Script to query the UCSC DAS server and pull out sequence information 
+given a position string.  Can use either a single string entry: ::
 
-           <<<chrx:123435
+   <<<chrx:123435
 
-        or can use a file with positions in the same format and get a batch 
-        output.
+or can use a file with positions in the same format and get a batch 
+output.
 
 vcfExtractor.pl
 ===============
 
-    **Current Version:** v8.0.031618
+**Current Version:** v8.0.040218
 
-    **Requirements:**
+**Requirements:**
 
-        - `VCF Tools <http://vcftools.sourceforge.net/>`_ 
-        - Perl Modules: 
-            * ``Sort::Versions``
-            * ``Data::Dump``
+    - `VCF Tools <http://vcftools.sourceforge.net/>`_ 
+    - Perl Modules: 
+        * ``Sort::Versions``
+        * ``Data::Dump``
 
-    **Description:** 
+**Description:** 
 
-        Script to parse Ion Torrent specific VCF files and pull out variant 
-        data. This works with TS v4.2 and v5.0 files, both run with or without
-        Ion Reporter systems. 
+Script to parse Ion Torrent specific VCF files and pull out variant 
+data. This works with TS v4.2 and v5.0 files, both run with or without
+Ion Reporter systems. 
 
-        In order to run this utility, you'll need to have the 
-        package installed and `VCF Tools`_ in your ``$PATH``. There may be some 
-        other non-standard Perl modules to be installed, such as 
-        ``Sort::Versions``, ``Data::Dump``, etc. All can easily be installed 
-        from `CPAN <https://www.cpan.org>`_ as usual.  
+In order to run this utility, you'll need to have the 
+package installed and `VCF Tools`_ in your ``$PATH``. There may be some 
+other non-standard Perl modules to be installed, such as 
+``Sort::Versions``, ``Data::Dump``, etc. All can easily be installed 
+from `CPAN <https://www.cpan.org>`_ as usual.  
 
-        See the help documentation for this script for details on the options
-        and functionality of this tool: ::
-        
-            $ vcfExtractor.pl -h
+See the help documentation for this script for details on the options
+and functionality of this tool: ::
+
+    $ vcfExtractor.pl -h
             
 readlength_histogram.pl
 =======================
 
-    **Current Version:** v7.25.031418
+**Current Version:** v7.25.031418
 
-    **Requirements:**
+**Requirements:**
 
-        - `Statistics::R 
-          <http://search.cpan.org/~fangly/Statistics-R/lib/Statistics/R.pm>`_ 
-        - `ggplot2 <http://ggplot2.org>`_ 
+    - `Statistics::R 
+      <http://search.cpan.org/~fangly/Statistics-R/lib/Statistics/R.pm>`_ 
+    - `ggplot2 <http://ggplot2.org>`_ 
 
-    **Description:** 
+**Description:** 
 
-        Read in an Ion Torrent BAM file and generate a readlength histogram plot 
-        from the sample.  This script will require the Perl `Statistics::R`_
-        module, as well as, the most excellent `ggplot2`_ library in the `R 
-        Statistics` package.
+Read in an Ion Torrent BAM file and generate a readlength histogram plot 
+from the sample.  This script will require the Perl `Statistics::R`_
+module, as well as, the most excellent `ggplot2`_ library in the `R 
+Statistics` package.
 
 map_refs.py
 ===========
 
-    **Current Version:** v0.1.020918
+**Current Version:** v0.1.020918
 
-    **Requirements:**
+**Requirements:**
 
-        - Konstantin's Python `pyliftover library 
-          <https://github.com/konstantint/pyliftover>`_
+    - Konstantin's Python `pyliftover library 
+      <https://github.com/konstantint/pyliftover>`_
 
-    **Description:** 
+**Description:** 
 
-        Map coordinates of two reference assemblies (e.g. hg18 and hg19) 
-        together in order.  This utility requires Konstantin's excellent python 
-        `pyliftover library`_  which leverages the UCSC liftOver utility for 
-        mapping reference assemblies.
+Map coordinates of two reference assemblies (e.g. hg18 and hg19) 
+together in order.  This utility requires Konstantin's excellent python 
+`pyliftover library`_  which leverages the UCSC liftOver utility for 
+mapping reference assemblies.
 
 germline_merge.pl
 =================
 
-    **Current Version:** v0.4.030118
+**Current Version:** v0.4.030118
 
-    **Requirements:**
+**Requirements:**
 
-        - ``vcfExtractor.pl``
+    - ``vcfExtractor.pl``
 
-    **Description:** 
+**Description:** 
 
-        Combine OCA Ion Reporter blood and tumor VCFs to generate a tumor / 
-        normal comparison file.  In reality, though the labels will be 'blood' 
-        and 'tumor' related, the data really can be generated by comparing any 
-        two VCF files from Ion Reporter. 
+Combine OCA Ion Reporter blood and tumor VCFs to generate a tumor / 
+normal comparison file.  In reality, though the labels will be 'blood' 
+and 'tumor' related, the data really can be generated by comparing any 
+two VCF files from Ion Reporter. 
 
 get_clinvar_variant_data.py
 ===========================
 
-    **Current Version:** 2.0_111417
+**Current Version:** 2.0_111417
 
-    **Requirements:**
+**Requirements:**
 
-        - Python 3
-        - Python 3 `requests library 
-          <http://docs.python-requests.org/en/master/>`_
+    - Python 3
+    - Python 3 `requests library 
+      <http://docs.python-requests.org/en/master/>`_
 
-    **Description:** 
+**Description:** 
 
-        Input a file, comma separated list, or a single ClinVar ID and get a 
-        table of variant information derived from ClinVar using the eutils API 
-        functionality of NCBI. No filtering possible for now, but will be added 
-        later. 
+Input a file, comma separated list, or a single ClinVar ID and get a 
+table of variant information derived from ClinVar using the eutils API 
+functionality of NCBI. No filtering possible for now, but will be added 
+later. 
 
 get_pathway.py
 ==============
 
-    **Current Version:** v1.1.021618
+**Current Version:** v1.1.021618
 
-    **Requirements:**
+**Requirements:**
 
-    **Description:** 
-    
-        Using a pathway lookup table in ``resources``, generate get a list of 
-        oncogenic related pathways for a gene or set of genes.  Need to continue
-        to refine the pathways lookup tables, but the hope is that this will 
-        be a good annotator tool that can be implemented into other pipelines.
+**Description:** 
+
+Using a pathway lookup table in ``resources``, generate get a list of 
+oncogenic related pathways for a gene or set of genes.  Need to continue
+to refine the pathways lookup tables, but the hope is that this will 
+be a good annotator tool that can be implemented into other pipelines.
 
 protein_domain_retrieve.py
 ==========================
 
-    **Current Version:** v0.2.121517
+**Current Version:** v0.2.121517
 
-    **Requirements:**
+**Requirements:**
 
-    **Description:** 
-       *This script is not yet complete and is still being worked on.*
+**Description:** 
+*This script is not yet complete and is still being worked on.*
