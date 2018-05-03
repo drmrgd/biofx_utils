@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Get pathway(s) for a given gene, or output a set of genes for a given pathway.
@@ -12,13 +12,15 @@ import csv
 from pprint import pprint as pp
 from collections import defaultdict
 
-version = '1.1.021618'
+version = '1.2.042718'
 sys_json = os.path.join(os.path.dirname(__file__), 'resources', 'pathways.json')
 
 def get_args():
     parser = argparse.ArgumentParser(description = __doc__)
     parser.add_argument('-g', '--gene', metavar='<gene>', help='Gene or '
         'comma separated list of genes to look up.')
+    parser.add_argument('-b', '--batchfile', metavar='<batchfile>', 
+        help='File containing a list of genes (one per line) to look up.')
     parser.add_argument('-p', '--pathway', metavar='<pathway>', help='Pathway '
             'to search and return all genes. Since pathways have spaces in the '
             'names, need to surround with quotes when inputting.')
@@ -31,7 +33,7 @@ def get_args():
             version = '%(prog)s - v' + version)
     args = parser.parse_args()
 
-    if not any(x for x in (args.gene, args.pathway)):
+    if not any(x for x in (args.gene, args.batchfile, args.pathway)):
         sys.stderr.write('ERROR: You must input either a gene or pathway to '
             'query!\n')
         sys.exit(1)
@@ -41,11 +43,11 @@ def parse_json(jfile):
     with open(jfile) as fh:
         return json.load(fh)
 
-def get_pathway_by_gene(pathway_data, gene):
+def get_pathway_by_gene(pathway_data, gene_list):
     """
-    Input a gene list and output a set of pathways that correspond to that mapping.
+    Input a gene list and output a set of pathways that correspond to that 
+    mapping.
     """
-    gene_list = gene.split(',')
     results = {}
     
     for g in gene_list:
@@ -55,7 +57,6 @@ def get_pathway_by_gene(pathway_data, gene):
                 results[g].append(p)
     return results
         
-
 def get_gene_by_pathway(pathway_data, pathway):
     """
     Input a pathway and return a list of genes indicated in that pathway.
@@ -76,7 +77,7 @@ def get_gene_by_pathway(pathway_data, pathway):
             sys.exit(1)
 
 def print_results(data, csv_out):
-    for k,v in data.iteritems():
+    for k,v in data.items():
         # Just output a long string of junk if no results found so that we can
         # try to add something later. Will remove later.
         outdata = ['?????????????']
@@ -84,11 +85,15 @@ def print_results(data, csv_out):
             outdata = v
         csv_out.writerow([k]+outdata)
 
-def main(gene, pathway, jfile, outfile):
+def read_batchfile(batchfile):
+    with open(batchfile) as fh:
+        return [x.rstrip('\n') for x in fh]
+
+def main(genes, pathway, jfile, outfile):
     data = parse_json(jfile)
 
-    if gene:
-        results = get_pathway_by_gene(data, gene)
+    if genes:
+        results = get_pathway_by_gene(data, genes)
     elif pathway:
         results = get_gene_by_pathway(data, pathway)
     
@@ -103,7 +108,13 @@ def main(gene, pathway, jfile, outfile):
 
 if __name__ == '__main__':
     args = get_args()
+    genes = []
+    if args.batchfile:
+        genes = read_batchfile(args.batchfile)
+    else:
+        genes = args.gene.split(',')
+
     try:
-        main(args.gene, args.pathway, args.json, args.output)
+        main(genes, args.pathway, args.json, args.output)
     except KeyboardInterrupt:
         sys.exit(9)
