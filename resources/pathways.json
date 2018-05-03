@@ -1,7 +1,7 @@
 {
     "file_info" : {
-        "version" : "2.3",
-        "date" : "2/12/2018",
+        "version" : "2.5",
+        "date" : "2018.04.27",
         "description" : "Canonical pathways in cancer mapped to genes"
     },
     "PI3K/AKT1/MTOR": [
@@ -16,7 +16,6 @@
         "PIK3CG",
         "PIK3R1",
         "PIK3R2",
-        "PPP2R1A",
         "PTEN",
         "RHEB",
         "RICTOR",
@@ -41,7 +40,6 @@
         "NF1",
         "NRAS",
         "PTPN11",
-        "PPP2R1A",
         "RAC1",
         "RAF1",
         "SRC"
@@ -161,7 +159,7 @@
         "NPM1",
         "PALB2",
         "PMS2",
-        "PP2R1A",
+        "PPP2R1A",
         "POLE",
         "RAD50",
         "RAD51",
@@ -302,7 +300,6 @@
         "TNFAIP3"
     ],
     "TGF-B signaling" : [
-        "PPP2R1A",
         "SMAD2",
         "SMAD3",
         "SMAD4",
@@ -392,10 +389,15 @@
     ],
     "Other" : [
         "ARID1A",
+        "GAS6",
         "H3F3A",
         "KNSTRN",
         "TOP1",
         "VHL",
         "XPO1"
+    ],
+    "Apoptosis Signalling" : [
+        "BCL2L1",
+        "MCL1"
     ]
 }
