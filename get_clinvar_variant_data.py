@@ -188,12 +188,15 @@ if __name__=='__main__':
 
     delims = { 'tab' : '\t', 'comma' : ',' } 
     out_fh = gen_output_handle(args.output)
-    print(delims[args.delimiter].join(
-        ['chr', 'start', 'stop', 'ref', 'alt', 'gene', 'transcript', 'cds', 'aa', 
-            'functional', 'clinvar_id', 'dbsnp_id', 'clinical_significance', 
-            'review_status', 'PMIDs']
-        ), file=out_fh)
+    try: 
+        print(delims[args.delimiter].join(
+            ['chr', 'start', 'stop', 'ref', 'alt', 'gene', 'transcript', 'cds', 'aa', 
+                'functional', 'clinvar_id', 'dbsnp_id', 'clinical_significance', 
+                'review_status', 'PMIDs']
+            ), file=out_fh)
 
-    for var in vlist:
-        clinvar_json = get_clinvar_data(var)
-        parse_json(clinvar_json,var,out_fh,delims[args.delimiter])
+        for var in vlist:
+            clinvar_json = get_clinvar_data(var)
+            parse_json(clinvar_json,var,out_fh,delims[args.delimiter])
+    except KeyboardInterrupt:
+        sys.exit(9)
