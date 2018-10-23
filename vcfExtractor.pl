@@ -20,12 +20,13 @@ use Data::Dump;
 use File::Basename;
 use Term::ANSIColor;
 use Time::Piece;
+use Text::CSV;
 
 use constant 'DEBUG' => 0; # set extra debug output.
 use constant 'DEVEL' => 0; # output extra info when in devel
 
 my $scriptname = basename($0);
-my $version = "v8.0.040218";
+my $version = "v8.1.102218";
 
 if (DEVEL) {
     print colored("*" x 75, 'bold yellow on_black'), "\n";
@@ -122,6 +123,8 @@ USAGE: $scriptname [options] <input_vcf_file>
     -H, --HS        Print out only variants that have a Hotspot ID (NOT YET 
                     IMPLEMENTED).
     -V, --VCF       Output data as a new, simple VCF file, rather than a table.
+    -C, --CSV       Output data as a comma separated values (CSV) file instead of
+                    a pretty printed table.
 EOT
 
 my $help;
@@ -141,6 +144,7 @@ my $hotspots;
 my $cfdna;
 my $debug_pos;  # undocumented.
 my $vcf_output;
+my $csv_out;
 
 GetOptions( 
     "output|o=s"    => \$outfile,
@@ -159,6 +163,7 @@ GetOptions(
     "quiet|q"       => \$quiet,
     "HS|H"          => \$hotspots,
     "VCF|V"         => \$vcf_output,
+    "CSV|C"         => \$csv_out,
     "help|h"        => \$help )
 or die "\n$usage";
 
@@ -844,6 +849,9 @@ sub format_output {
     #     9. VarID
 
     my ($data, $filter_list, $header, $output_type) = @_;
+    
+    # TODO: Allow for custom delimiters here?
+    my $csv = Text::CSV->new({binary => 1, eol => $/}) if ($csv_out);
 
     # DEBUG
     # Dump first entry for help in figuring out array indices
@@ -937,7 +945,11 @@ sub format_output {
 
     select $out_fh;
     my $format_string = join(' ', @string_formatter{@header}) . "\n";
-    printf $format_string, @header;
+    if ($csv_out) {
+        $csv->print($out_fh, \@header);
+    } else { 
+        printf $format_string, @header;
+    }
 
     if (%$data) {
         my @output_data;
@@ -950,7 +962,11 @@ sub format_output {
 
             # Fill in undef slots with NULL
             @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
-            printf $format_string, @output_data;
+            if ($csv_out) {
+                $csv->print($out_fh, \@output_data);
+            } else {
+                printf $format_string, @output_data;
+            }
         }
     } else {
         # Handle null result reporting depending on the filter used.
