@@ -12,7 +12,7 @@ import csv
 from pprint import pprint as pp
 from collections import defaultdict
 
-version = '1.2.042718'
+version = '1.3.121318'
 sys_json = os.path.join(os.path.dirname(__file__), 'resources', 'pathways.json')
 
 def get_args():
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     genes = []
     if args.batchfile:
         genes = read_batchfile(args.batchfile)
-    else:
+    elif args.gene:
         genes = args.gene.split(',')
 
     try:
