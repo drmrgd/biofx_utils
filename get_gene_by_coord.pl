@@ -176,6 +176,10 @@ sub read_gene_file {
         chomp;
         my ($chr, $start, $end, $gene, $strand) = split(/\t/);
 
+        # Filter out some things we don't want for most purposes.
+        # 1. MiRs
+        next if $gene =~ /^MIR/;
+
         # for now, keep all data in the file.  However, there are many chrom.
         # variants (e.g. 'chr17_ctg5_hap1', 'chr17_gl000205_random', etc.) that
         # we probably don't need.  Also quite a few genes we probably won't ever
