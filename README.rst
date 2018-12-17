@@ -42,7 +42,7 @@ output.
 vcfExtractor.pl
 ===============
 
-**Current Version:** v8.0.040218
+**Current Version:** v8.1.102218
 
 **Requirements:**
 
@@ -140,7 +140,7 @@ later.
 get_pathway.py
 ==============
 
-**Current Version:** v1.1.021618
+**Current Version:** v1.3.121318
 
 **Requirements:**
 
@@ -159,4 +159,24 @@ protein_domain_retrieve.py
 **Requirements:**
 
 **Description:** 
-*This script is not yet complete and is still being worked on.*
+Protein Domain Retrieval Script
+Starting with a correctly formatted HUGO gene ID, retrieve protein domain position
+information from EMBL in a JSON format that can be used as a lookup DB in other
+programs. You can either load a comma separated string of IDs, or a batchfile
+containing a list of IDs, one per line, to look up.
+
+get_gene_by_coord.pl
+====================
+**Current Version:** v0.8.121718
+
+**Requirements:**
+
+    - Perl `MCE::Shared module <https://metacpan.org/pod/MCE::Shared>`_
+
+**Description:**
+
+Script to read in a GRCh37 (hg19) coordinate in the format ``chr:position`` and
+output a HUGO gene name.  Can input a comma separated list of coords or a file
+containing a batch of coords to lookup, one per line.  This script is written 
+with parallel processing in mind, so it's really fast to look up data batchwise.
+
