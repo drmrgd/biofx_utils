@@ -606,7 +606,7 @@ sub get_ovat_annot {
 
     $$func =~ tr/'/"/;
     my $json_annot = JSON::XS->new->decode($$func);
-    
+
     for my $func_block ( @$json_annot ) {
         # In some cases, overlapping transcripts / genes can induce multiple 
         # FUNC block entries, which makes things a mess. Skip over any FUNC
@@ -614,11 +614,17 @@ sub get_ovat_annot {
         # canonical transcript list.  Since some primary transcripts have 
         # changed over time, will get an array of ids to map.
         my $can_tran = get_can_tran($func_block->{'gene'});
-
-        # No transcript ID in FUNC block on occassion for some reason  
+         
+        # No transcript ID in FUNC block on occassion for some reason; just gra
+        # the first one.
         $func_block->{'transcript'} //= $can_tran->[0];
+
+        # Strip off any minor transcript version (i.e. NM_00123.1 => NM_00123)
+        $func_block->{'transcript'} = (split(/\./, $func_block->{'transcript'}))[0];
+
         next if $can_tran eq 'None' 
-            or ! grep { $func_block->{'transcript'} eq $_ } @$can_tran;
+            # or ! grep { $func_block->{'transcript'} eq $_ } @$can_tran;
+            or ! grep { $_ =~ /$func_block->{'transcript'}/ } @$can_tran;
 
         # If there is "normalized" data, then we got a positive variant call; 
         # map the appropriate elems.  If not, then likely ref call, and map 
@@ -911,11 +917,16 @@ sub format_output {
         'CHROM:POS'             => '%-17s',
         'REF'                   => "%-${ref_width}s",
         'ALT'                   => "%-${alt_width}s",
-        'VAF'                   => "%9s  ",
+        'VAF'                   => "%-9s",
         'TotCov'                => "%-8s",
         'RefCov'                => "%-8s",
         'AltCov'                => '%-8s',
         'VarID'                 => "%-${varid_width}s",
+        'MAF'                   => "%9s  ",
+        'LOD'                   => '%-7s',
+        'MolDepth'              => "%-9s",
+        'RefFams'               => '%-8s',
+        'AltFams'               => '%-8s',
         'Filter'                => '%-8s',
         'Filter_Reason'         => "%-${filter_width}s",
         'Gene'                  => '%-13s',
@@ -925,7 +936,6 @@ sub format_output {
         'Location'              => '%-13s',
         'Function'              => "%-${func_width}s",
         'oncomineVariantClass'  => '%s', # Since last field don't set a width.
-        'LOD'                   => '%-7s',
     );
 
     # Set up the output header and the correct format string to use.
@@ -935,7 +945,12 @@ sub format_output {
     # Add in the LOD field if running cfDNA.  But, VAF position can change
     # depending on whether outputting filter or not.  So, find that first.
     my ($vaf_index) = grep { $header[$_] eq 'VAF' } 1..$#header;
-    splice(@header, $vaf_index+1, 0, 'LOD') if ($cfdna);
+    
+    # Change some header bits if we have the cfDNA output
+    if ($cfdna) {
+        splice(@header, $vaf_index+1, 0, 'LOD');
+        @header[3,5,6,7,] = qw(MAF MolDepth RefFams AltFams);
+    }
 
     if ($annots) {
         push(@header, qw(Gene Transcript CDS AA Location Function));
