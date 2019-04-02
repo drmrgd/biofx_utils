@@ -26,7 +26,7 @@ use constant 'DEBUG' => 0; # set extra debug output.
 use constant 'DEVEL' => 0; # output extra info when in devel
 
 my $scriptname = basename($0);
-my $version = "v8.1.102218";
+my $version = "v8.2.040219";
 
 if (DEVEL) {
     print colored("*" x 75, 'bold yellow on_black'), "\n";
@@ -556,6 +556,7 @@ sub parse_data {
                 # conventional panel / assay.
                 if ($cfdna) {
                     $var_data[7] = $dp;
+                    $var_data[6] = sprintf("%1.4f", $var_data[6]); # trim LOD
                 }
                 else {
                     # We don't have cfDNA, so remove the LOD field from output.
@@ -910,7 +911,7 @@ sub format_output {
         'CHROM:POS'             => '%-17s',
         'REF'                   => "%-${ref_width}s",
         'ALT'                   => "%-${alt_width}s",
-        'VAF'                   => "%-9s",
+        'VAF'                   => "%9s  ",
         'TotCov'                => "%-8s",
         'RefCov'                => "%-8s",
         'AltCov'                => '%-8s',
