@@ -26,7 +26,7 @@ use constant 'DEBUG' => 0; # set extra debug output.
 use constant 'DEVEL' => 0; # output extra info when in devel
 
 my $scriptname = basename($0);
-my $version = "v8.2.040219";
+my $version = "v8.2.040319";
 
 if (DEVEL) {
     print colored("*" x 75, 'bold yellow on_black'), "\n";
@@ -615,7 +615,7 @@ sub get_ovat_annot {
         # changed over time, will get an array of ids to map.
         my $can_tran = get_can_tran($func_block->{'gene'});
          
-        # No transcript ID in FUNC block on occassion for some reason; just gra
+        # No transcript ID in FUNC block on occassion for some reason; just grab
         # the first one.
         $func_block->{'transcript'} //= $can_tran->[0];
 
@@ -663,10 +663,19 @@ sub get_ovat_annot {
         $location = $data{'location'};
     }
 
+    # TODO: How do we want to handle cases where the variant is outside of the 
+    # canonical transcript?  In these cases, we are going to be missing all of
+    # the variant annotation bits and only have a gene name.  Woudl we want to
+    # actually report these, or would we prefer to toss them?
+
+
     # Sometimes, for reasons I'm not quite sure of, there can be an array for 
     # the functional annotation in each func block entry.  I think it's safe to
     # take the most severe of the list and to use.  
     ($function) = join('|', @$function) if ref $function eq 'ARRAY';
+    # TODO: verify this works OK.  ONly testing for now, then we'll change and
+    # remove the extra splice step.
+    $function = rank_func(\$function);
 
     if (DEBUG) {
         print "======================  DEBUG  =======================\n\n";
@@ -684,6 +693,34 @@ sub get_ovat_annot {
     }
     return ($gene_class, $variant_class, $gene_name, $transcript, $hgvs, 
         $protein, $function, $location );
+}
+
+sub rank_func {
+    # Choose the most significant functional annotation in the event we have 
+    # more than one indicated. Use the hash below to rank the scores, store the
+    # results in an array of arrays, and then choose the first element, which 
+    # should be the most impactful, or tied for the most impactful - we don't
+    # care which.
+    my $func_string = shift;
+
+    my %func_ranks = (
+        'unknown'                      => 0,
+        'refAllele'                    => 0,
+        'synonymous'                   => 1,
+        'missense'                     => 2,
+        'nonsense'                     => 5,
+        'stoploss'                     => 6,
+        'nonframeshiftBlockSubstition' => 3,
+        'nonframeshiftInsertion'       => 4,
+        'nonframeshiftDeletion'        => 4,
+        'frameshiftBlockSubstitution'  => 7,
+        'frameshiftDeletion'           => 7,
+        'frameshiftInsertion'          => 7,
+    );
+
+    my @ranked_terms = map{ [$func_ranks{$_}, $_] } split(/\|/, $$func_string);
+    my @sorted = sort { $b->[0] <=> $a->[0] } @ranked_terms;
+    return $sorted[0]->[1];
 }
 
 sub normalize_variant {
