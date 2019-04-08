@@ -23,7 +23,7 @@ use Time::Piece;
 use Text::CSV;
 
 use constant 'DEBUG' => 0; # set extra debug output.
-use constant 'DEVEL' => 0; # output extra info when in devel
+use constant 'DEVEL' => 1; # output extra info when in devel
 
 my $scriptname = basename($0);
 my $version = "v8.2.040319";
@@ -575,11 +575,17 @@ sub parse_data {
                     ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs,
                         $protein, $function, $exon) = 
                         get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
+
+                    # TODO
+                    # If we don't get a value for all of hgvs (cds), protein, 
+                    # exon, and function, then we probably have a transcript 
+                    # mapping issue, so we'll skip for now.  Figure out a better
+                    # way later.
+                    next if (grep { $_ eq '---' } ($hgvs, $protein, $exon, $function)) == 4;
                 }
 
                 # Now handle in two steps.  Add IR annots if there, and then 
                 # if wanted ovat annots, add them too.
-                
                 push(@var_data, $gene_name, $transcript, $hgvs, $protein, $exon,
                     $function) if $annots;
                 push(@var_data, $ovat_vc) if $annots and $ovat_annot;
@@ -668,6 +674,10 @@ sub get_ovat_annot {
     # the variant annotation bits and only have a gene name.  Woudl we want to
     # actually report these, or would we prefer to toss them?
 
+
+    # TODO: Figure a better way to handle.  For now just skip 
+    # anything without functional annotation data; it's likely
+    # te be outside the can tran.
 
     # Sometimes, for reasons I'm not quite sure of, there can be an array for 
     # the functional annotation in each func block entry.  I think it's safe to
