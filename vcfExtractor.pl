@@ -26,7 +26,7 @@ use constant 'DEBUG' => 0; # set extra debug output.
 use constant 'DEVEL' => 1; # output extra info when in devel
 
 my $scriptname = basename($0);
-my $version = "v8.2.040319";
+my $version = "v8.3.050619";
 
 if (DEVEL) {
     print colored("*" x 75, 'bold yellow on_black'), "\n";
@@ -1023,8 +1023,13 @@ sub format_output {
                 ? (@output_data = @{$$data{$variant}}[0,1,2,5..17]) 
                 : (@output_data = @{$$data{$variant}});
 
+            # Get rid of TVC / LIA tag for each entry since we don't need it
+            # anymore
+            pop(@output_data);
+
             # Fill in undef slots with NULL
-            @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
+            # @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
+            @output_data = map { $_ //= 'NULL' } @output_data;
             if ($csv_out) {
                 $csv->print($out_fh, \@output_data);
             } else {
