@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 # Script to parse Ion Torrent VCF files and output columnar information.  Can 
 # also filter based on several different criteria.  Designed to work with TVC 
 # v4.0+ VCF files.
