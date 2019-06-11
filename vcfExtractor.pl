@@ -26,7 +26,7 @@ use constant 'DEBUG' => 0; # set extra debug output.
 use constant 'DEVEL' => 1; # output extra info when in devel
 
 my $scriptname = basename($0);
-my $version = "v8.3.050619";
+my $version = "v8.4.061119";
 
 if (DEVEL) {
     print colored("*" x 75, 'bold yellow on_black'), "\n";
@@ -123,8 +123,8 @@ USAGE: $scriptname [options] <input_vcf_file>
     -H, --HS        Print out only variants that have a Hotspot ID (NOT YET 
                     IMPLEMENTED).
     -V, --VCF       Output data as a new, simple VCF file, rather than a table.
-    -C, --CSV       Output data as a comma separated values (CSV) file instead of
-                    a pretty printed table.
+    -C, --CSV       Output data as a comma separated values (CSV) file instead
+                    of a pretty printed table.
 EOT
 
 my $help;
@@ -567,21 +567,24 @@ sub parse_data {
                 # possible.
                 my ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs, 
                     $protein, $function, $exon);
-                if ( $func eq '.' ) {
-                    push( @warnings, "$warn could not find FUNC entry for '$pos'\n") if $annots;
-                    $ovat_vc = $ovat_gc = $gene_name = "NULL";
-                } 
-                else {
-                    ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs,
-                        $protein, $function, $exon) = 
-                        get_ovat_annot(\$func, \%norm_data) unless $func eq '---'; 
-
-                    # TODO
-                    # If we don't get a value for all of hgvs (cds), protein, 
-                    # exon, and function, then we probably have a transcript 
-                    # mapping issue, so we'll skip for now.  Figure out a better
-                    # way later.
-                    next if (grep { $_ eq '---' } ($hgvs, $protein, $exon, $function)) == 4;
+                if ($annots) {
+                    if ( $func eq '.' ) {
+                        push( @warnings, "$warn could not find FUNC entry for '$pos'\n");
+                        $ovat_vc = $ovat_gc = $gene_name = "NULL";
+                    } else {
+                        unless ($func eq '---') {
+                            ($ovat_gc, $ovat_vc, $gene_name, $transcript, $hgvs,
+                            $protein, $function, $exon) = get_ovat_annot(
+                                \$func, \%norm_data);
+                        }
+                        
+                        # TODO
+                        # If we don't get a value for all of hgvs (cds), protein, 
+                        # exon, and function, then we probably have a transcript 
+                        # mapping issue, so we'll skip for now.  Figure out a better
+                        # way later.
+                        next if (grep { $_ eq '---' } ($hgvs, $protein, $exon, $function)) == 4;
+                    }
                 }
 
                 # Now handle in two steps.  Add IR annots if there, and then 
@@ -597,8 +600,8 @@ sub parse_data {
         }
     }
     
-    #dd \%parsed_data;
-    #__exit__(__LINE__, "Finsished parsing data and generating variant hash.");
+    # dd \%parsed_data;
+    # __exit__(__LINE__, "Finsished parsing data and generating variant hash.");
     return %parsed_data;
 }
 
@@ -918,6 +921,7 @@ sub format_output {
         #exit;
     #}
     
+    # If we are making a trimmed VCF, pass data out here and exit.
     if ($output_type eq 'vcf') {
         make_vcf($header, $data);
     }
@@ -1008,6 +1012,7 @@ sub format_output {
 
     select $out_fh;
     my $format_string = join(' ', @string_formatter{@header}) . "\n";
+
     if ($csv_out) {
         $csv->print($out_fh, \@header);
     } else { 
@@ -1017,18 +1022,14 @@ sub format_output {
     if (%$data) {
         my @output_data;
         for my $variant ( sort { versioncmp( $a, $b ) } keys %$data ) {
-            # if not outputting nocall, remove fields 3 and 4; always remove 
-            # genotype field.
+            # if not outputting NOCALL data, remove fields 3 and 4; always remove 
+            # the genotype field, and the last element of the array, which is
+            # the tvc / lia flag.
             ($nocall) 
-                ? (@output_data = @{$$data{$variant}}[0,1,2,5..17]) 
+                ? (@output_data = @{$$data{$variant}}[0,1,2,5..($#{$$data{$variant}}-1)]) 
                 : (@output_data = @{$$data{$variant}});
 
-            # Get rid of TVC / LIA tag for each entry since we don't need it
-            # anymore
-            pop(@output_data);
-
             # Fill in undef slots with NULL
-            # @output_data[9..13] = map { $_ //= 'NULL' } @output_data[9..13];
             @output_data = map { $_ //= 'NULL' } @output_data;
             if ($csv_out) {
                 $csv->print($out_fh, \@output_data);
