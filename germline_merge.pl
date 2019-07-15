@@ -2,13 +2,6 @@
 # Merge a blood variant report with a tumor variant report to determine if 
 # variants are germline or somatic.
 #
-# TODO:
-#    - Add some output formatting options, including TSV / PP options.
-#    - Add filtering to pull up update only by position, gene, ID, etc. Can 
-#      leverage vcfExtractor filters to limit data if need be.
-#    - Add dbSNP annotations?
-#    - Add SNP only filtering, which can be turned into an ID verify kind of 
-#      thing if we really want. 
 #
 # 12/7/2017 - D Sims
 ###############################################################################
