@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 # Merge a blood variant report with a tumor variant report to determine if 
 # variants are germline or somatic.
 #
