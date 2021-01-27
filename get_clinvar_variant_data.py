@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Input a file, comma separated list, or a single ClinVar ID(s) and get a table of 
