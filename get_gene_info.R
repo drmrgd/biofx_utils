@@ -10,9 +10,9 @@
 library(argparse)
 library(biomaRt)
 
-version <- '2.0.012721'
+version <- '2.5.012821'
 
-valid_terms <- c('refseq_mrna','ensemble_transcript_id', 'refseq_mrna', 
+valid_terms <- c('refseq_mrna','ensembl_transcript_id', 'refseq_mrna', 
           'entrezgene_id', 'hgnc_symbol', 'ensembl_gene_id')
 
 parser <- ArgumentParser(
@@ -25,20 +25,29 @@ parser <- ArgumentParser(
 )
 parser$add_argument(
     "refseq", 
-    metavar='<STR> term to lookup (e.g. RefSeq ID).',
+    metavar='<STR> Search Term',
     nargs='?',
     help="RefSeq ID, or comma separated list of IDs to search"
 )
 parser$add_argument(
+    '-r', '--ref_version',
+    metavar='<STR> Ref Version',
+    default='grch37',
+    choices=c("grch37", "grch38"),
+    help=paste0("Version of human refernece to use. Input either 'grch37' ",
+                "or 'grch38'. Default is 'grch37'")
+)
+parser$add_argument(
     "-f", "--file", 
-    metavar='<FILE> File of terms to search.',
+    metavar='<FILE> Batchfile',
     help="Batch file of RefSeq IDs, one per line, to search"
 )
 parser$add_argument(
     "-F", "--Field", 
+    default='refseq_mrna',
     metavar='<STR> Field',
-    choices=valid_terms,
-    help="Field to use for searching. Default is refseq_mrna."
+    help=paste0("Field to use for searching. Default is refseq_mrna. Input '?' ",
+                "to get a list of all valid terms.")
 )
 parser$add_argument(
     "-w", "--wanted",
@@ -61,10 +70,39 @@ parser$add_argument(
 )
 args <- parser$parse_args()
 
-if (is.null(args$Field)) {
-    search_term <- 'refseq_mrna'
-} else {
-    search_term <- args$Field
+
+validate_terms <- function(term) {
+    # Check to see that the query and wanted terms are valid, and if not, of if
+    # we input '?', return a list of valid terms.
+    # if (term != '?' && ! term %in% valid_terms) {
+    if (term == '?') {
+        message("Valid terms:")
+        message(sprintf("\t> %s\n", valid_terms))
+        quit()
+    } 
+    else if (! term %in% valid_terms) {
+        message(sprintf("ERROR: term '%s' not valid.", term))
+        validate_terms('?')
+    } else {
+        invisible(return)
+    }
+}
+
+
+# Validate the query field, or output a list of valid terms if we're not sure.
+validate_terms(args$Field)
+
+wanted <- c("ensembl_transcript_id", "refseq_mrna", "entrezgene_id", 
+            "ensembl_gene_id", "hgnc_symbol", "chromosome_name",
+            "start_position", "end_position", "strand", "ensembl_exon_id")
+
+# Set up and validated the desired output terms.
+if (! is.null(args$wanted)) {
+    want_list <- unlist(strsplit(args$wanted, ','))
+    for (elem in want_list) {
+        validate_terms(elem)
+    }
+    wanted <- want_list
 }
 
 if (is.null(args$refseq) && is.null(args$file)) {
@@ -78,30 +116,23 @@ if (!is.null(args$refseq)) {
     refseq_queries <- scan(args$file, character(), quote="")
 }
 
-ensembl <- useMart("ensembl", host="grch37.ensembl.org", 
-    dataset="hsapiens_gene_ensembl")
-wanted <- c("ensembl_transcript_id", "refseq_mrna", "entrezgene_id", 
-            "ensembl_gene_id", "hgnc_symbol", "chromosome_name", "start_position",
-            "end_position", "strand", "ensembl_exon_id")
-
-if (! is.null(args$wanted)) {
-    want_list <- unlist(strsplit(args$wanted, ','))
-    for (elem in want_list) {
-        if (! elem %in% valid_terms) {
-            message(sprintf("ERROR: term '%s' not valid. Choose from:", elem))
-            message(sprintf("\t> %s\n", valid_terms))
-            stop()
-        }
-    }
-    wanted <- want_list
+# Create ensembl connection.
+if (args$ref_version == 'grch38') {
+    message("[INFO]: Using GRCh38 as the reference.\n")
+    ensembl <- useMart("ensembl", dataset="hsapiens_gene_ensembl")
+} else {
+    message("[INFO]: Using GRCh37 as the reference.\n")
+    ensembl <- useMart("ensembl", host="grch37.ensembl.org", 
+        dataset="hsapiens_gene_ensembl")
 }
 
-results <- getBM(attributes=wanted, filters=search_term, values=refseq_queries,
+results <- getBM(attributes=wanted, filters=args$Field, values=refseq_queries,
     mart=ensembl)
 
+# Print the output to either stdout or a file.
 if (! is.null(args$outfile)) {
-    print("Writing results to 'results.txt'")
-    write.csv(results, file="results.txt", quote=FALSE, row.names=FALSE)
+    print(paste0("Writing results to '", args$outfile, "'."))
+    write.csv(results, file=args$outfile, quote=FALSE, row.names=FALSE)
 } else {
     (results)
 }
