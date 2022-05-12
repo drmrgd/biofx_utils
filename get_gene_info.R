@@ -12,8 +12,8 @@ library(biomaRt)
 
 version <- '2.5.012821'
 
-valid_terms <- c('refseq_mrna','ensembl_transcript_id', 'refseq_mrna', 
-          'entrezgene_id', 'hgnc_symbol', 'ensembl_gene_id')
+valid_terms <- c('refseq_mrna','ensembl_transcript_id', 'entrezgene_id', 
+                 'hgnc_symbol', 'ensembl_gene_id')
 
 parser <- ArgumentParser(
     description=paste0('Input a refseq ID and output some other ids and terms ',
