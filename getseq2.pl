@@ -23,7 +23,7 @@ use File::Basename;
 use Getopt::Long;
 use Sort::Versions;
 
-my $version = "2.0.042822";
+my $version = "3.0.061623";
 
 my $reference = "$ENV{HOME}/Dropbox/reference/hg19/hg19.fasta";
 
@@ -82,5 +82,7 @@ sub parse_query {
 }
 
 open(my $stream, "-|", "samtools faidx $reference $formatted_query");
-my $ret_seq = (map{chomp; $_} <$stream>)[1];
-print "[ $formatted_query ]: $ret_seq\n";
+# my $ret_seq = (map{chomp; $_} <$stream>)[1];
+my @ret_seq = map{ chomp; $_ } <$stream>;
+my $outseq = join('', @ret_seq[1..$#ret_seq]);
+print "[ $formatted_query ]: $outseq\n";
