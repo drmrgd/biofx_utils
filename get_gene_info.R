@@ -10,7 +10,7 @@
 library(argparse)
 library(biomaRt)
 
-version <- '2.5.012821'
+version <- '2.6.122222'
 
 valid_terms <- c('refseq_mrna','ensembl_transcript_id', 'entrezgene_id', 
                  'hgnc_symbol', 'ensembl_gene_id')
@@ -55,8 +55,20 @@ parser$add_argument(
     help=paste0('In the event that only a subset of the terms are desired in the ',
         'output (like in the event we just want to map an ensemble_gene_id ',
         'to a hgnc_symbol), limit the output to these terms. If more than one ',
-        'term is desired, enter each separated by a comma.')
+        'term is desired, enter each separated by a comma. Input "?" to get a ',
+        'list of all valid terms.')
 )
+parser$add_argument(
+    "-m", "--mirror",
+    metavar='<STR> mirror',
+    choices=c("www", "uswest", "useast", "asia"),
+    help=paste0('NOT IMPLEMENTED!
+                Use a mirror instead of main site in the event the main site ',
+                'is currently unavailable. The only valid strings for this ',
+                'argument are "www", "uswest", "useast", or "asia". See ',
+                '`?useEnsembl` for details.')
+)
+
 parser$add_argument(
     "-o", "--outfile",
     metavar='<FILE> Output File',
@@ -122,7 +134,7 @@ if (args$ref_version == 'grch38') {
     ensembl <- useMart("ensembl", dataset="hsapiens_gene_ensembl")
 } else {
     message("[INFO]: Using GRCh37 as the reference.\n")
-    ensembl <- useMart("ensembl", host="grch37.ensembl.org", 
+    ensembl <- useMart("ensembl", host="https://grch37.ensembl.org", 
         dataset="hsapiens_gene_ensembl")
 }
 

@@ -42,8 +42,8 @@ my $usage = <<"EOT";
 USAGE: $program [options] --source <VCF>
 
 Options
-    -s, --source     Source of the data. Allowed values are either 'ion' or 
-                     'illumina'.
+    -s, --source     Source of the data. Allowed values are either 'ion', 
+                     'illumina', or 'misc'.
     -n, --numprocs   Number of parallel processes to run if running more than
                      one VCF through at a time.  Entering '0' will disable
                      parallel processing. DEFAULT: $num_procs.
@@ -85,8 +85,8 @@ help() if $help;
 version() if $ver_info;
 
 die "ERROR: you must provide a VCF source!\n" unless $source;
-unless (grep { $source eq $_ } qw(ion illumina)) {
-    die "ERROR: valid sources are 'ion' or 'illumina'.\n";
+unless (grep { $source eq $_ } qw(ion illumina misc)) {
+    die "ERROR: valid sources are 'ion', 'illumina', or 'misc'.\n";
 }
 
 unless (qx(which samtools)) {
@@ -111,6 +111,8 @@ my $base_data;
 ($num_procs > 0) 
     ? ($base_data = proc_vcfs_parallel(\@vcfs, \$source)) 
     : ($base_data = proc_vcfs(\@vcfs, \$source));
+
+exit;
 
 # Print it all out.
 my @sbs_order = qw(C>A C>G C>T T>A T>C T>G C>T_at_CpG C>T_at_other);
@@ -168,6 +170,10 @@ sub proc_vcfs {
 
     for my $vcf (@$vcfs) {
         my ($sample_name, $data) = parse_vcf(\$vcf, $source);
+
+        # XXX
+        exit;
+
         my ($tot_vars, $indels, $titv, $deam_score, $sbs_6, 
             $sbs_96) = get_var_metrics($data, $sample_name);
 
@@ -220,9 +226,22 @@ sub proc_vcfs_parallel {
 sub parse_vcf {
     my ($vcf, $source) = @_;
     print "Processing $$vcf...\n" unless $quiet;
-    ($$source eq 'ion')
-        ? return run_ion_parser($vcf)
-        : return run_illumina_parser($vcf);
+    # ($$source eq 'ion')
+        # ? return run_ion_parser($vcf)
+        # : return run_illumina_parser($vcf);
+    if ($$source eq 'ion') {
+        return run_ion_parser($vcf);
+    }
+    elsif ($$source eq 'illumina') {
+        return run_illumina_parser($vcf);
+    }
+    elsif ($$source eq 'misc') {
+        return run_misc_parser($vcf);
+    }
+    else {
+        print "I don't know what kind of file this is!\n";
+        exit 1;
+    }
 }
 
 sub run_illumina_parser {
@@ -288,6 +307,19 @@ sub run_ion_parser {
         push(@vcf_data, [$data[0], "$data[1]>$data[2]"]);
     }
     return \$sample_name, \@vcf_data;
+}
+
+sub run_misc_parser {
+    # XXX
+    my $vcf = shift;
+    my @vcf_data;
+
+    open(my $fh, "<", $vcf);
+    while (<$fh>) {
+        chomp(my @fields = split(/,/));
+        # push(@vcf_data, [
+    }
+
 }
 
 sub get_var_metrics {

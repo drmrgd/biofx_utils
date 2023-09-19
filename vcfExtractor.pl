@@ -23,10 +23,10 @@ use Time::Piece;
 use Text::CSV;
 
 use constant 'DEBUG' => 0; # set extra debug output.
-use constant 'DEVEL' => 0; # output extra info when in devel
+use constant 'DEVEL' => 1; # output extra info when in devel
 
 my $scriptname = basename($0);
-my $version = "v8.4.061119";
+my $version = "v8.5.081222-dev1";
 
 if (DEVEL) {
     print colored("*" x 75, 'bold yellow on_black'), "\n";
